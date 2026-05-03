@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Music Organizer</title>
+<style>
+  /* ── Reset & base ─────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #111318;
+    --surface:   #1c1f26;
+    --surface2:  #252930;
+    --border:    #2e3340;
+    --accent:    #6c63ff;
+    --accept:    #22c55e;
+    --skip:      #ef4444;
+    --text:      #e4e6f0;
+    --muted:     #7a8099;
+    --radius:    18px;
+    --card-w:    min(420px, 92vw);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  /* ── Top bar ──────────────────────────────────────────────────────── */
+  header {
+    width: 100%;
+    max-width: 520px;
+    padding: 16px 20px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: .5px; }
+
+  .stats {
+    display: flex;
+    gap: 12px;
+    font-size: .78rem;
+    color: var(--muted);
+  }
+
+  .stat-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+  .stat-chip .val { color: var(--text); font-weight: 600; }
+
+  /* ── Progress bar ─────────────────────────────────────────────────── */
+  .progress-wrap {
+    width: 100%;
+    max-width: 520px;
+    padding: 0 20px 14px;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    border-radius: 99px;
+    transition: width .4s ease;
+    width: 0%;
+  }
+
+  /* ── Card stack area ──────────────────────────────────────────────── */
+  .deck {
+    position: relative;
+    width: var(--card-w);
+    height: min(580px, 85svh);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Card ─────────────────────────────────────────────────────────── */
+  .card {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    cursor: grab;
+    touch-action: none;
+    transition: box-shadow .15s;
+    will-change: transform;
+    box-shadow: 0 8px 32px #0006;
+    overflow: hidden;
+  }
+  .card:active { cursor: grabbing; }
+
+  /* swipe overlay labels */
+  .card .lbl-accept,
+  .card .lbl-skip {
+    position: absolute;
+    top: 22px;
+    font-size: 1.4rem;
+    font-weight: 800;
+    border: 3px solid;
+    border-radius: 10px;
+    padding: 4px 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .1s;
+    letter-spacing: 1px;
+  }
+  .card .lbl-accept { left: 20px;  color: var(--accept); border-color: var(--accept); transform: rotate(-15deg); }
+  .card .lbl-skip   { right: 20px; color: var(--skip);   border-color: var(--skip);   transform: rotate(15deg); }
+
+  /* ── File name row ────────────────────────────────────────────────── */
+  .card-filename {
+    font-size: .82rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Album art placeholder ────────────────────────────────────────── */
+  .art {
+    width: 96px;
+    height: 96px;
+    background: var(--surface2);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.4rem;
+    flex-shrink: 0;
+  }
+
+  .card-head { display: flex; gap: 14px; align-items: flex-start; }
+
+  .card-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .card-meta .song-title {
+    font-size: 1.2rem; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card-meta .song-artist {
+    font-size: .95rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card-meta .song-album {
+    font-size: .85rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ── Score badge ──────────────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-top: 4px;
+  }
+  .badge-acoustid { background: #1e40af33; color: #93c5fd; border: 1px solid #1e40af66; }
+  .badge-existing { background: #78350f33; color: #fcd34d; border: 1px solid #78350f66; }
+  .badge-none     { background: #7f1d1d33; color: #fca5a5; border: 1px solid #7f1d1d66; }
+
+  /* ── Existing tags comparison ─────────────────────────────────────── */
+  .tags-section {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: .82rem;
+  }
+  .tags-section .section-lbl {
+    font-size: .7rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .8px;
+    margin-bottom: 6px;
+  }
+  .tags-grid { display: grid; grid-template-columns: 60px 1fr; gap: 2px 8px; }
+  .tags-grid .k { color: var(--muted); }
+  .tags-grid .v { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Destination preview ──────────────────────────────────────────── */
+  .dest-preview {
+    font-size: .78rem;
+    color: var(--muted);
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dest-preview span { overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Audio player ─────────────────────────────────────────────────── */
+  .player-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 12px;
+  }
+
+  .play-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    width: 36px; height: 36px;
+    font-size: 1rem;
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+  }
+  .play-btn:hover { background: #5850e8; }
+
+  .waveform-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .audio-seek {
+    width: 100%;
+    height: 4px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .audio-time {
+    font-size: .7rem;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  /* spacer to push player to bottom */
+  .flex-spacer { flex: 1; }
+
+  /* ── Action buttons ───────────────────────────────────────────────── */
+  .actions {
+    width: var(--card-w);
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    padding: 16px 0 24px;
+  }
+
+  .btn-action {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    border: none;
+    font-size: 1.6rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .12s, box-shadow .12s;
+    box-shadow: 0 4px 16px #0004;
+  }
+  .btn-action:hover { transform: scale(1.12); box-shadow: 0 6px 24px #0006; }
+  .btn-action:active { transform: scale(.96); }
+
+  .btn-skip   { background: #1f1215; color: var(--skip);   border: 2px solid var(--skip); }
+  .btn-accept { background: #0f1f15; color: var(--accept); border: 2px solid var(--accept); }
+  .btn-reset  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); font-size: .95rem; width: auto; border-radius: 8px; padding: 0 16px; font-size: .82rem; }
+
+  /* ── Empty / loading states ───────────────────────────────────────── */
+  .state-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    height: 100%;
+    text-align: center;
+    padding: 20px;
+  }
+  .state-screen .icon { font-size: 3rem; }
+  .state-screen h2 { font-size: 1.2rem; }
+  .state-screen p  { font-size: .88rem; color: var(--muted); max-width: 280px; }
+
+  /* spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+
+  /* swipe animation */
+  @keyframes flyRight {
+    to { transform: translateX(120vw) rotate(25deg); opacity: 0; }
+  }
+  @keyframes flyLeft {
+    to { transform: translateX(-120vw) rotate(-25deg); opacity: 0; }
+  }
+  .fly-right { animation: flyRight .35s ease-in forwards; }
+  .fly-left  { animation: flyLeft  .35s ease-in forwards; }
+
+  /* keyboard hints */
+  .hints {
+    font-size: .72rem;
+    color: var(--muted);
+    padding-bottom: 12px;
+    display: flex;
+    gap: 16px;
+  }
+  .hints kbd {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: inherit;
+  }
+
+  /* skip badge on card */
+  .badge-was-skipped {
+    background: #4c1d9533;
+    color: #c4b5fd;
+    border: 1px solid #4c1d9566;
+    font-size: .7rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px;
+    align-self: flex-start;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <h1>🎵 Music Organizer</h1>
+  <div class="stats">
+    <span class="stat-chip">✅ <span class="val" id="s-accepted">–</span></span>
+    <span class="stat-chip">⏩ <span class="val" id="s-skipped">–</span></span>
+    <span class="stat-chip">⏳ <span class="val" id="s-pending">–</span></span>
+  </div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+</div>
+
+<!-- ── Card deck ───────────────────────────────────────────────────────── -->
+<div class="deck" id="deck">
+  <div class="state-screen" id="loading-screen">
+    <div class="spinner"></div>
+    <p>Loading…</p>
+  </div>
+</div>
+
+<!-- ── Action buttons ──────────────────────────────────────────────────── -->
+<div class="actions" id="actions" style="visibility:hidden">
+  <button class="btn-action btn-skip"   id="btn-skip"   title="Skip (←)">✕</button>
+  <button class="btn-action btn-reset"  id="btn-reset-skipped" title="Re-queue all skipped">↺ skipped</button>
+  <button class="btn-action btn-accept" id="btn-accept" title="Accept (→)">✓</button>
+</div>
+
+<div class="hints" id="hints" style="visibility:hidden">
+  <span><kbd>←</kbd> skip</span>
+  <span><kbd>→</kbd> accept</span>
+  <span><kbd>Space</kbd> play/pause</span>
+</div>
+
+<audio id="player" preload="auto"></audio>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let currentCard = null;   // { path, best, ... }
+let isAnimating  = false;
+let audioEl      = document.getElementById('player');
+
+// ── Fetch helpers ──────────────────────────────────────────────────────────
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── Progress ───────────────────────────────────────────────────────────────
+
+async function refreshStats() {
+  try {
+    const s = await api('/api/status');
+    document.getElementById('s-accepted').textContent = s.accepted;
+    document.getElementById('s-skipped').textContent  = s.skipped;
+    document.getElementById('s-pending').textContent  = s.pending;
+
+    const done = s.accepted;
+    const total = s.total;
+    const pct = total ? (done / total * 100).toFixed(1) : 0;
+    document.getElementById('progress-fill').style.width = pct + '%';
+  } catch (e) { /* ignore */ }
+}
+
+// ── Card building ──────────────────────────────────────────────────────────
+
+function buildCard(data) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.path = data.path;
+
+  // swipe labels
+  card.innerHTML += `<div class="lbl-accept">ACCEPT</div><div class="lbl-skip">SKIP</div>`;
+
+  // filename
+  const fnRow = document.createElement('div');
+  fnRow.className = 'card-filename';
+  fnRow.textContent = '📂 ' + data.filename;
+  card.appendChild(fnRow);
+
+  if (data.is_skipped) {
+    const sb = document.createElement('div');
+    sb.className = 'badge-was-skipped';
+    const num = (data.candidate_offset || 0) + 1;
+    const tot = data.num_candidates || 1;
+    sb.textContent = tot > 1
+      ? `↩ rimandato — suggerimento ${num}/${tot}`
+      : '↩ rimandato';
+    card.appendChild(sb);
+  }
+
+  // head: art + meta
+  const head = document.createElement('div');
+  head.className = 'card-head';
+
+  const art = document.createElement('div');
+  art.className = 'art';
+  art.textContent = '🎵';
+  head.appendChild(art);
+
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+
+  const best = data.best || {};
+  const title  = best.title  || data.existing?.title  || data.filename;
+  const artist = best.artist || data.existing?.artist || '—';
+  const album  = best.album  || data.existing?.album  || '—';
+
+  meta.innerHTML = `
+    <div class="song-title">${esc(title)}</div>
+    <div class="song-artist">${esc(artist)}</div>
+    <div class="song-album">${esc(album)}</div>
+  `;
+
+  // badge
+  const badge = document.createElement('span');
+  if (data.best && data.best.score != null) {
+    const pct = Math.round(data.best.score * 100);
+    badge.className = 'badge badge-acoustid';
+    badge.textContent = `AcoustID ${pct}%`;
+  } else if (data.existing && (data.existing.title || data.existing.artist)) {
+    badge.className = 'badge badge-existing';
+    badge.textContent = 'Existing tags';
+  } else {
+    badge.className = 'badge badge-none';
+    badge.textContent = 'No metadata';
+  }
+  meta.appendChild(badge);
+
+  head.appendChild(meta);
+  card.appendChild(head);
+
+  // existing tags comparison (if different from best)
+  const ex = data.existing || {};
+  const hasDiff = ex.title || ex.artist || ex.album;
+  if (hasDiff) {
+    const section = document.createElement('div');
+    section.className = 'tags-section';
+    section.innerHTML = `
+      <div class="section-lbl">Original tags</div>
+      <div class="tags-grid">
+        <span class="k">Title</span>  <span class="v">${esc(ex.title  || '—')}</span>
+        <span class="k">Artist</span> <span class="v">${esc(ex.artist || '—')}</span>
+        <span class="k">Album</span>  <span class="v">${esc(ex.album  || '—')}</span>
+      </div>
+    `;
+    card.appendChild(section);
+  }
+
+  // destination preview
+  const dest = document.createElement('div');
+  dest.className = 'dest-preview';
+  dest.innerHTML = `<span>📁</span><span>${esc(data.dest_preview || '—')}</span>`;
+  card.appendChild(dest);
+
+  // spacer
+  card.appendChild(Object.assign(document.createElement('div'), { className: 'flex-spacer' }));
+
+  // player bar
+  const playerBar = document.createElement('div');
+  playerBar.className = 'player-bar';
+  playerBar.innerHTML = `
+    <button class="play-btn" id="play-btn-inner" title="Play/pause (Space)">▶</button>
+    <div class="waveform-wrap">
+      <input type="range" class="audio-seek" id="audio-seek-inner" value="0" min="0" max="100" step="0.1" />
+      <div class="audio-time" id="audio-time-inner">0:00 / 0:00</div>
+    </div>
+  `;
+  card.appendChild(playerBar);
+
+  // wire player events after appending
+  setTimeout(() => {
+    const pbtn = card.querySelector('#play-btn-inner');
+    const seek  = card.querySelector('#audio-seek-inner');
+    const time  = card.querySelector('#audio-time-inner');
+
+    if (pbtn) pbtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(data.path, pbtn); });
+    if (seek) seek.addEventListener('input', (e) => {
+      e.stopPropagation();
+      if (audioEl.duration) audioEl.currentTime = audioEl.duration * (seek.value / 100);
+    });
+
+    audioEl.ontimeupdate = () => {
+      if (!audioEl.duration) return;
+      const pct = audioEl.currentTime / audioEl.duration * 100;
+      if (seek) seek.value = pct;
+      if (time) time.textContent = `${fmt(audioEl.currentTime)} / ${fmt(audioEl.duration)}`;
+    };
+    audioEl.onended = () => {
+      if (pbtn) pbtn.textContent = '▶';
+    };
+  }, 0);
+
+  // swipe gesture
+  attachSwipe(card);
+
+  return card;
+}
+
+// ── Load next card ─────────────────────────────────────────────────────────
+
+async function loadNext() {
+  if (isAnimating) return;
+  setActionsVisible(false);
+  stopAudio();
+
+  const deck = document.getElementById('deck');
+  deck.innerHTML = `<div class="state-screen"><div class="spinner"></div><p>Analyzing…</p></div>`;
+
+  try {
+    const data = await api('/api/next');
+    deck.innerHTML = '';
+
+    if (data.done) {
+      deck.innerHTML = `
+        <div class="state-screen">
+          <div class="icon">🎉</div>
+          <h2>All done!</h2>
+          <p>Every track has been reviewed. You can reset skipped songs to review them again.</p>
+        </div>`;
+      setActionsVisible(false);
+      document.getElementById('hints').style.visibility = 'hidden';
+      document.getElementById('btn-reset-skipped').style.display = 'flex';
+      refreshStats();
+      return;
+    }
+
+    currentCard = data;
+    const card = buildCard(data);
+    deck.appendChild(card);
+    setActionsVisible(true);
+    document.getElementById('hints').style.visibility = 'visible';
+
+    // auto-play
+    playAudio(data.path);
+    refreshStats();
+  } catch (err) {
+    deck.innerHTML = `<div class="state-screen"><div class="icon">⚠️</div><h2>Error</h2><p>${esc(String(err))}</p></div>`;
+  }
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+
+async function doAccept() {
+  if (!currentCard || isAnimating) return;
+  isAnimating = true;
+  stopAudio();
+
+  const card = document.querySelector('.card');
+  if (card) card.classList.add('fly-right');
+
+  try {
+    await api('/api/accept', {
+      method: 'POST',
+      body: JSON.stringify({ path: currentCard.path, choice: currentCard.best || {} }),
+    });
+  } catch (e) { console.warn(e); }
+
+  await sleep(360);
+  isAnimating = false;
+  currentCard = null;
+  loadNext();
+}
+
+async function doSkip() {
+  if (!currentCard || isAnimating) return;
+  isAnimating = true;
+  stopAudio();
+
+  const card = document.querySelector('.card');
+  if (card) card.classList.add('fly-left');
+
+  try {
+    await api('/api/skip', {
+      method: 'POST',
+      body: JSON.stringify({ path: currentCard.path }),
+    });
+  } catch (e) { console.warn(e); }
+
+  await sleep(360);
+  isAnimating = false;
+  currentCard = null;
+  loadNext();
+}
+
+// ── Swipe gesture ──────────────────────────────────────────────────────────
+
+function attachSwipe(card) {
+  let startX = 0, startY = 0, dx = 0, dragging = false;
+
+  function onStart(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    startY = (e.touches ? e.touches[0].clientY : e.clientY);
+    dragging = true;
+    card.style.transition = 'none';
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+    dx = cx - startX;
+    const dy = cy - startY;
+    const rot = dx * 0.08;
+    card.style.transform = `translateX(${dx}px) translateY(${dy * 0.3}px) rotate(${rot}deg)`;
+
+    const ratio = Math.abs(dx) / 80;
+    const capped = Math.min(ratio, 1);
+    card.querySelector('.lbl-accept').style.opacity = dx > 0 ? capped : 0;
+    card.querySelector('.lbl-skip').style.opacity   = dx < 0 ? capped : 0;
+  }
+
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    card.style.transition = 'transform .35s ease, opacity .35s';
+    card.querySelector('.lbl-accept').style.opacity = 0;
+    card.querySelector('.lbl-skip').style.opacity   = 0;
+
+    if (dx > 80) {
+      doAccept();
+    } else if (dx < -80) {
+      doSkip();
+    } else {
+      card.style.transform = '';
+    }
+    dx = 0;
+  }
+
+  card.addEventListener('mousedown',  onStart);
+  card.addEventListener('mousemove',  onMove);
+  card.addEventListener('mouseup',    onEnd);
+  card.addEventListener('mouseleave', onEnd);
+  card.addEventListener('touchstart', onStart, { passive: true });
+  card.addEventListener('touchmove',  onMove,  { passive: true });
+  card.addEventListener('touchend',   onEnd);
+}
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+
+function playAudio(path) {
+  audioEl.src = '/api/audio?path=' + encodeURIComponent(path);
+  audioEl.currentTime = 0;
+  audioEl.play().catch(() => {});
+  const pbtn = document.getElementById('play-btn-inner');
+  if (pbtn) pbtn.textContent = '⏸';
+}
+
+function stopAudio() {
+  audioEl.pause();
+  audioEl.src = '';
+  const pbtn = document.getElementById('play-btn-inner');
+  if (pbtn) pbtn.textContent = '▶';
+}
+
+function togglePlay(path, btn) {
+  if (audioEl.paused) {
+    if (!audioEl.src || !audioEl.src.includes(encodeURIComponent(path))) {
+      audioEl.src = '/api/audio?path=' + encodeURIComponent(path);
+      audioEl.currentTime = 0;
+    }
+    audioEl.play().catch(() => {});
+    btn.textContent = '⏸';
+  } else {
+    audioEl.pause();
+    btn.textContent = '▶';
+  }
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); doAccept(); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); doSkip(); }
+  if (e.key === ' ')          { e.preventDefault(); spaceToggle(); }
+});
+
+function spaceToggle() {
+  if (!currentCard) return;
+  const pbtn = document.getElementById('play-btn-inner');
+  if (pbtn) togglePlay(currentCard.path, pbtn);
+}
+
+// ── Reset skipped ──────────────────────────────────────────────────────────
+
+document.getElementById('btn-reset-skipped').addEventListener('click', async () => {
+  await api('/api/reset_skipped', { method: 'POST', body: '{}' });
+  loadNext();
+});
+
+document.getElementById('btn-accept').addEventListener('click', doAccept);
+document.getElementById('btn-skip').addEventListener('click', doSkip);
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function fmt(secs) {
+  if (!isFinite(secs)) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function setActionsVisible(v) {
+  document.getElementById('actions').style.visibility = v ? 'visible' : 'hidden';
+  document.getElementById('hints').style.visibility   = v ? 'visible' : 'hidden';
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+
+refreshStats();
+loadNext();
+</script>
+</body>
+</html>
