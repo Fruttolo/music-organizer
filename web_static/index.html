@@ -472,6 +472,119 @@
     padding: 2px 8px; border-radius: 999px;
     align-self: flex-start;
   }
+
+  /* ── Manual search button (in proposed col header) ────────────────── */
+  .btn-manual-search {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: .82rem;
+    padding: 0 3px;
+    line-height: 1;
+    opacity: 0.55;
+    transition: opacity .15s;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+  .btn-manual-search:hover { opacity: 1; }
+
+  /* ── Manual search modal ──────────────────────────────────────────── */
+  .search-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .search-modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .search-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: min(400px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 48px #0009;
+  }
+  .search-modal h3 { font-size: 1rem; font-weight: 700; }
+  .search-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .search-field label {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--muted);
+  }
+  .search-field input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: .9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-field input:focus { border-color: var(--accent); }
+  .search-modal-actions { display: flex; gap: 8px; }
+  .btn-modal-search {
+    flex: 1;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    color: #fff;
+    font-size: .88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-modal-search:hover { background: #5850e8; }
+  .btn-modal-cancel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 16px;
+    color: var(--muted);
+    font-size: .88rem;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-modal-cancel:hover { background: var(--border); }
+  .search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .search-result-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .search-result-item:hover { border-color: var(--accent); background: #1a1c2e; }
+  .search-result-title { font-size: .88rem; font-weight: 600; }
+  .search-result-sub   { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .search-result-score { font-size: .68rem; color: #93c5fd; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -509,6 +622,26 @@
   <span><kbd>←</kbd> skip</span>
   <span><kbd>→</kbd> accept</span>
   <span><kbd>Space</kbd> play/pause</span>
+</div>
+
+<!-- ── Manual search modal ─────────────────────────────────────────────── -->
+<div class="search-modal-overlay" id="search-modal-overlay">
+  <div class="search-modal">
+    <h3>🔍 Ricerca manuale</h3>
+    <div class="search-field">
+      <label>Titolo</label>
+      <input type="text" id="search-input-title" placeholder="es. Bohemian Rhapsody" />
+    </div>
+    <div class="search-field">
+      <label>Artista</label>
+      <input type="text" id="search-input-artist" placeholder="es. Queen" />
+    </div>
+    <div class="search-modal-actions">
+      <button class="btn-modal-cancel" id="btn-modal-cancel">Annulla</button>
+      <button class="btn-modal-search" id="btn-modal-search">Cerca</button>
+    </div>
+    <div class="search-results" id="search-results-list"></div>
+  </div>
 </div>
 
 <audio id="player" preload="auto"></audio>
@@ -611,7 +744,7 @@ function buildCard(data) {
   // Proposed column (with copy buttons)
   const colProp = document.createElement('div');
   colProp.className = 'tags-col tags-col-prop';
-  colProp.innerHTML = `<div class="col-header">Proposti</div>`;
+  colProp.innerHTML = `<div class="col-header">Proposti <button class="btn-manual-search" title="Ricerca manuale tag">🔍</button></div>`;
 
   for (const [k, v] of [['Title', propTitle], ['Artist', propArtist], ['Album', propAlbum]]) {
     const row = document.createElement('div');
@@ -625,6 +758,13 @@ function buildCard(data) {
   }
 
   compare.appendChild(colProp);
+
+  // wire manual search button
+  colProp.querySelector('.btn-manual-search').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSearchModal();
+  });
+
   card.appendChild(compare);
 
   // ── Original path ───────────────────────────────────────────────────
@@ -921,6 +1061,103 @@ function setActionsVisible(v) {
   document.getElementById('actions').style.visibility = v ? 'visible' : 'hidden';
   document.getElementById('hints').style.visibility   = v ? 'visible' : 'hidden';
 }
+
+// ── Manual search modal ────────────────────────────────────────────────────
+
+function openSearchModal() {
+  if (!currentCard) return;
+  const best = currentCard.best || {};
+  document.getElementById('search-input-title').value  = best.title  || '';
+  document.getElementById('search-input-artist').value = best.artist || '';
+  document.getElementById('search-results-list').innerHTML = '';
+  document.getElementById('search-modal-overlay').classList.add('open');
+  document.getElementById('search-input-title').focus();
+}
+
+function closeSearchModal() {
+  document.getElementById('search-modal-overlay').classList.remove('open');
+}
+
+async function doManualSearch() {
+  const title  = document.getElementById('search-input-title').value.trim();
+  const artist = document.getElementById('search-input-artist').value.trim();
+  if (!title && !artist) return;
+
+  const resList = document.getElementById('search-results-list');
+  resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Ricerca in corso…</div>';
+
+  try {
+    const data = await api('/api/search_by_text', {
+      method: 'POST',
+      body: JSON.stringify({ title, artist }),
+    });
+    renderSearchResults(data.candidates || []);
+  } catch (e) {
+    resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderSearchResults(candidates) {
+  const resList = document.getElementById('search-results-list');
+  if (!candidates.length) {
+    resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Nessun risultato trovato.</div>';
+    return;
+  }
+  resList.innerHTML = '';
+  for (const c of candidates) {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    const pct = c.score != null ? Math.round(c.score * 100) + '%' : '—';
+    item.innerHTML = `
+      <div class="search-result-title">${esc(c.title || '—')}</div>
+      <div class="search-result-sub">${esc(c.artist || '—')}${c.album ? ' · ' + esc(c.album) : ''}</div>
+      <div class="search-result-score">Match: ${pct}</div>
+    `;
+    item.addEventListener('click', () => applySearchResult(c));
+    resList.appendChild(item);
+  }
+}
+
+function applySearchResult(candidate) {
+  if (!currentCard) return;
+  currentCard.best = { ...candidate };
+
+  // Update proposed column in the active card
+  const card = document.querySelector('.card');
+  if (card) {
+    const colProp = card.querySelector('.tags-col-prop');
+    if (colProp) {
+      const pairs = [['Title', candidate.title || '—'], ['Artist', candidate.artist || '—'], ['Album', candidate.album || '—']];
+      const rows = colProp.querySelectorAll('.tag-row');
+      pairs.forEach(([k, v], i) => {
+        if (!rows[i]) return;
+        const span = rows[i].querySelector('.v');
+        if (span) { span.textContent = v; span.title = v; }
+        const btn = rows[i].querySelector('.copy-btn');
+        if (btn) btn.onclick = (e) => { e.stopPropagation(); copyText(v, btn); };
+      });
+    }
+    // Update proposed path (client-side approximation)
+    const pathVal = card.querySelector('.path-row.path-proposed .path-val');
+    if (pathVal) {
+      const ext = currentCard.filename ? currentCard.filename.slice(currentCard.filename.lastIndexOf('.')) : '';
+      const preview = [candidate.artist || 'Unknown Artist', candidate.album || 'Unknown Album', (candidate.title || currentCard.filename) + ext].join('/');
+      pathVal.textContent = preview;
+      pathVal.title = preview;
+    }
+  }
+
+  closeSearchModal();
+}
+
+// Wire modal buttons
+document.getElementById('btn-modal-cancel').addEventListener('click', closeSearchModal);
+document.getElementById('btn-modal-search').addEventListener('click', doManualSearch);
+document.getElementById('search-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSearchModal();
+});
+document.getElementById('search-input-title').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doManualSearch(); });
+document.getElementById('search-input-artist').addEventListener('keydown', (e) => { if (e.key === 'Enter') doManualSearch(); });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 

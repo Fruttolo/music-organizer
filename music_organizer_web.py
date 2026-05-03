@@ -7,6 +7,8 @@ import os
 import random
 import shutil
 import threading
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 try:
@@ -145,6 +147,9 @@ def api_next():
     )
     dest_full = str(Path(OUTPUT_FOLDER) / dest_preview) if OUTPUT_FOLDER else dest_preview
 
+    # Pre-fetch the *next* pending file in the background while the user decides.
+    _trigger_prefetch(exclude=candidate)
+
     return jsonify({
         "done":             False,
         "path":             candidate,
@@ -198,9 +203,10 @@ def api_accept():
 
     _save_state(state)
 
-    # Evict cache so the slot is freed
+    # Evict cache so the slot is freed, then pre-fetch the next song.
     with _cache_lock:
         _fingerprint_cache.pop(file_path, None)
+    _trigger_prefetch()
 
     return jsonify({"ok": True, "dest": str(dest)})
 
@@ -226,6 +232,7 @@ def api_skip():
         skipped_offsets[file_path] = skipped_offsets.get(file_path, 0) + 1
 
     _save_state(state)
+    _trigger_prefetch(exclude=file_path)
     return jsonify({"ok": True})
 
 
@@ -255,15 +262,77 @@ def api_reset_skipped():
     return jsonify({"ok": True})
 
 
+@app.route("/api/search_by_text", methods=["POST"])
+def api_search_by_text():
+    """Search MusicBrainz recordings by title and/or artist."""
+    data   = request.get_json(force=True)
+    title  = str(data.get("title",  "")).strip()
+    artist = str(data.get("artist", "")).strip()
+
+    if not title and not artist:
+        abort(400, "Provide at least a title or artist")
+
+    parts = []
+    if title:
+        parts.append(f'recording:"{title}"')
+    if artist:
+        parts.append(f'artist:"{artist}"')
+    query = " AND ".join(parts)
+
+    url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
+        "query": query,
+        "fmt":   "json",
+        "limit": "10",
+    })
+
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        abort(502, f"MusicBrainz error: {exc}")
+
+    candidates = []
+    seen: set = set()
+    for recording in result.get("recordings", []):
+        title_r  = recording.get("title", "")
+        ac       = recording.get("artist-credit", [])
+        artist_r = ac[0].get("name", "") if ac else ""
+        releases = recording.get("releases", [])
+        album_r  = releases[0].get("title", "") if releases else ""
+        score    = int(recording.get("score", 0))
+
+        key = (title_r.lower(), artist_r.lower(), album_r.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+
+        candidates.append({
+            "title":  title_r,
+            "artist": artist_r,
+            "album":  album_r,
+            "score":  round(score / 100.0, 2),
+        })
+
+    return jsonify({"candidates": candidates})
+
+
 # ─── Pre-fetch next card in background ────────────────────────────────────────
 
-def _prefetch_next():
-    """Background thread: fingerprint the first pending file so it's ready."""
+def _prefetch_next(exclude: str | None = None):
+    """Background thread: fingerprint the next pending file(s) so they're ready.
+
+    ``exclude`` is the path currently being shown to the user — skip it so we
+    pre-fetch files the user hasn't seen yet.
+    """
     all_f = _all_audio_files()
     state = _load_state()
     accepted = set(state.get("accepted", []))
     skipped  = set(state.get("skipped", []))
-    pending  = [f for f in all_f if f not in accepted and f not in skipped]
+    pending  = [f for f in all_f if f not in accepted and f not in skipped and f != exclude]
     for candidate in pending[:2]:
         with _cache_lock:
             if candidate in _fingerprint_cache:
@@ -278,6 +347,11 @@ def _prefetch_next():
             _fingerprint_cache[candidate] = {"existing": existing, "candidates": candidates}
 
 
+def _trigger_prefetch(exclude: str | None = None) -> None:
+    """Start a daemon thread to pre-fetch the next pending file(s)."""
+    threading.Thread(target=_prefetch_next, kwargs={"exclude": exclude}, daemon=True).start()
+
+
 # ─── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -290,7 +364,7 @@ if __name__ == "__main__":
     print(f"Source : {SOURCE_FOLDER}")
     print(f"Output : {OUTPUT_FOLDER}")
     print("Starting pre-fetch…")
-    threading.Thread(target=_prefetch_next, daemon=True).start()
+    _trigger_prefetch()
 
     port = int(os.environ.get("WEB_PORT", 5050))
     print(f"Open http://localhost:{port}  in your browser")
