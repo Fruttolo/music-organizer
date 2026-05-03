@@ -143,6 +143,7 @@ def api_next():
         / sanitize(best.get("album") or "Unknown Album")
         / f"{sanitize(best.get('title') or path.stem)}{ext}"
     )
+    dest_full = str(Path(OUTPUT_FOLDER) / dest_preview) if OUTPUT_FOLDER else dest_preview
 
     return jsonify({
         "done":             False,
@@ -152,6 +153,7 @@ def api_next():
         "candidates":       candidates,
         "best":             best,
         "dest_preview":     dest_preview,
+        "dest_full":        dest_full,
         "is_skipped":       candidate in skipped,
         "candidate_offset": candidate_offset,
         "num_candidates":   num_candidates,

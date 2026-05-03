@@ -201,21 +201,142 @@
   .tags-grid .k { color: var(--muted); }
   .tags-grid .v { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* ── Destination preview ──────────────────────────────────────────── */
-  .dest-preview {
-    font-size: .78rem;
-    color: var(--muted);
+  /* ── Card top row ─────────────────────────────────────────────────── */
+  .card-top-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .card-top-meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* ── Tags comparison (2-col) ──────────────────────────────────────── */
+  .tags-compare {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .tags-col {
     background: var(--surface2);
-    border-radius: 8px;
-    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .tags-col-prop {
+    border-color: #4c3f99;
+    background: #1a1c2e;
+  }
+
+  .col-header {
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--muted);
+    margin-bottom: 4px;
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tags-col-prop .col-header { color: #a78bfa; }
+
+  .tag-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: .8rem;
+  }
+
+  .tag-row .k {
+    color: var(--muted);
+    flex-shrink: 0;
+    font-size: .7rem;
+    width: 34px;
+  }
+
+  .tag-row .v {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dest-preview span { overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Copy button ──────────────────────────────────────────────────── */
+  .copy-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 2px 3px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    line-height: 1;
+    opacity: 0.55;
+    transition: opacity .15s, color .15s;
+    display: flex;
+    align-items: center;
+  }
+  .copy-btn:hover { opacity: 1; color: var(--accent); }
+  .copy-btn.copied { color: var(--accept); opacity: 1; }
+
+  /* ── Path rows ────────────────────────────────────────────────────── */
+  .path-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: .74rem;
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  .path-lbl {
+    font-size: .62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .path-val {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+    opacity: 0.8;
+    font-family: 'Consolas', 'SF Mono', monospace;
+    font-size: .72rem;
+  }
+
+  .path-row.path-proposed {
+    border-color: #4c3f99;
+    background: #1a1c2e;
+  }
+
+  .path-row.path-proposed .path-lbl { color: #a78bfa; }
 
   /* ── Audio player ─────────────────────────────────────────────────── */
   .player-bar {
@@ -433,88 +554,95 @@ function buildCard(data) {
   card.dataset.path = data.path;
 
   // swipe labels
-  card.innerHTML += `<div class="lbl-accept">ACCEPT</div><div class="lbl-skip">SKIP</div>`;
+  card.innerHTML = `<div class="lbl-accept">ACCEPT</div><div class="lbl-skip">SKIP</div>`;
 
-  // filename
-  const fnRow = document.createElement('div');
-  fnRow.className = 'card-filename';
-  fnRow.textContent = '📂 ' + data.filename;
-  card.appendChild(fnRow);
-
-  if (data.is_skipped) {
-    const sb = document.createElement('div');
-    sb.className = 'badge-was-skipped';
-    const num = (data.candidate_offset || 0) + 1;
-    const tot = data.num_candidates || 1;
-    sb.textContent = tot > 1
-      ? `↩ rimandato — suggerimento ${num}/${tot}`
-      : '↩ rimandato';
-    card.appendChild(sb);
-  }
-
-  // head: art + meta
-  const head = document.createElement('div');
-  head.className = 'card-head';
+  // ── Top row: art + badge ────────────────────────────────────────────
+  const topRow = document.createElement('div');
+  topRow.className = 'card-top-row';
 
   const art = document.createElement('div');
   art.className = 'art';
   art.textContent = '🎵';
-  head.appendChild(art);
+  topRow.appendChild(art);
 
-  const meta = document.createElement('div');
-  meta.className = 'card-meta';
+  const topMeta = document.createElement('div');
+  topMeta.className = 'card-top-meta';
 
   const best = data.best || {};
-  const title  = best.title  || data.existing?.title  || data.filename;
-  const artist = best.artist || data.existing?.artist || '—';
-  const album  = best.album  || data.existing?.album  || '—';
-
-  meta.innerHTML = `
-    <div class="song-title">${esc(title)}</div>
-    <div class="song-artist">${esc(artist)}</div>
-    <div class="song-album">${esc(album)}</div>
-  `;
-
-  // badge
-  const badge = document.createElement('span');
-  if (data.best && data.best.score != null) {
-    const pct = Math.round(data.best.score * 100);
-    badge.className = 'badge badge-acoustid';
-    badge.textContent = `AcoustID ${pct}%`;
-  } else if (data.existing && (data.existing.title || data.existing.artist)) {
-    badge.className = 'badge badge-existing';
-    badge.textContent = 'Existing tags';
+  let badgeHtml = '';
+  if (best.score != null) {
+    const pct = Math.round(best.score * 100);
+    badgeHtml = `<span class="badge badge-acoustid">AcoustID ${pct}%</span>`;
+  } else if ((data.existing || {}).title || (data.existing || {}).artist) {
+    badgeHtml = `<span class="badge badge-existing">Existing tags</span>`;
   } else {
-    badge.className = 'badge badge-none';
-    badge.textContent = 'No metadata';
+    badgeHtml = `<span class="badge badge-none">No metadata</span>`;
   }
-  meta.appendChild(badge);
+  if (data.is_skipped) {
+    const num = (data.candidate_offset || 0) + 1;
+    const tot = data.num_candidates || 1;
+    const txt = tot > 1 ? `↩ rimandato — suggerimento ${num}/${tot}` : '↩ rimandato';
+    badgeHtml += `<span class="badge-was-skipped">${esc(txt)}</span>`;
+  }
+  topMeta.innerHTML = badgeHtml;
+  topRow.appendChild(topMeta);
+  card.appendChild(topRow);
 
-  head.appendChild(meta);
-  card.appendChild(head);
-
-  // existing tags comparison (if different from best)
+  // ── Tags comparison (2-col) ─────────────────────────────────────────
   const ex = data.existing || {};
-  const hasDiff = ex.title || ex.artist || ex.album;
-  if (hasDiff) {
-    const section = document.createElement('div');
-    section.className = 'tags-section';
-    section.innerHTML = `
-      <div class="section-lbl">Original tags</div>
-      <div class="tags-grid">
-        <span class="k">Title</span>  <span class="v">${esc(ex.title  || '—')}</span>
-        <span class="k">Artist</span> <span class="v">${esc(ex.artist || '—')}</span>
-        <span class="k">Album</span>  <span class="v">${esc(ex.album  || '—')}</span>
-      </div>
-    `;
-    card.appendChild(section);
+  const propTitle  = best.title  || ex.title  || data.filename;
+  const propArtist = best.artist || ex.artist || '—';
+  const propAlbum  = best.album  || ex.album  || '—';
+
+  const compare = document.createElement('div');
+  compare.className = 'tags-compare';
+
+  // Original column
+  const colOrig = document.createElement('div');
+  colOrig.className = 'tags-col tags-col-orig';
+  colOrig.innerHTML = `
+    <div class="col-header">Originali</div>
+    <div class="tag-row"><span class="k">Title</span><span class="v" title="${esc(ex.title||'—')}">${esc(ex.title||'—')}</span></div>
+    <div class="tag-row"><span class="k">Artist</span><span class="v" title="${esc(ex.artist||'—')}">${esc(ex.artist||'—')}</span></div>
+    <div class="tag-row"><span class="k">Album</span><span class="v" title="${esc(ex.album||'—')}">${esc(ex.album||'—')}</span></div>
+  `;
+  compare.appendChild(colOrig);
+
+  // Proposed column (with copy buttons)
+  const colProp = document.createElement('div');
+  colProp.className = 'tags-col tags-col-prop';
+  colProp.innerHTML = `<div class="col-header">Proposti</div>`;
+
+  for (const [k, v] of [['Title', propTitle], ['Artist', propArtist], ['Album', propAlbum]]) {
+    const row = document.createElement('div');
+    row.className = 'tag-row';
+    row.innerHTML = `<span class="k">${k}</span><span class="v" title="${esc(v)}">${esc(v)}</span><button class="copy-btn" title="Copia ${k}">${copyIcon()}</button>`;
+    row.querySelector('.copy-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyText(v, e.currentTarget);
+    });
+    colProp.appendChild(row);
   }
 
-  // destination preview
-  const dest = document.createElement('div');
-  dest.className = 'dest-preview';
-  dest.innerHTML = `<span>📁</span><span>${esc(data.dest_preview || '—')}</span>`;
-  card.appendChild(dest);
+  compare.appendChild(colProp);
+  card.appendChild(compare);
+
+  // ── Original path ───────────────────────────────────────────────────
+  const pathFrom = document.createElement('div');
+  pathFrom.className = 'path-row path-original';
+  pathFrom.innerHTML = `<span class="path-lbl">Da</span><span class="path-val" title="${esc(data.path)}">${esc(data.path)}</span>`;
+  card.appendChild(pathFrom);
+
+  // ── Proposed path ───────────────────────────────────────────────────
+  const destFull = data.dest_full || data.dest_preview || '—';
+  const pathTo = document.createElement('div');
+  pathTo.className = 'path-row path-proposed';
+  pathTo.innerHTML = `<span class="path-lbl">A</span><span class="path-val" title="${esc(destFull)}">${esc(destFull)}</span><button class="copy-btn" title="Copia path">${copyIcon()}</button>`;
+  pathTo.querySelector('.copy-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyText(destFull, e.currentTarget);
+  });
+  card.appendChild(pathTo);
 
   // spacer
   card.appendChild(Object.assign(document.createElement('div'), { className: 'flex-spacer' }));
@@ -764,6 +892,20 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function copyIcon() {
+  return `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 1500);
+  } catch (e) {
+    console.warn('Copy failed', e);
+  }
 }
 
 function fmt(secs) {
