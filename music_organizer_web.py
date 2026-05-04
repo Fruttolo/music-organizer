@@ -408,6 +408,12 @@ def api_unaccept():
     dest_path_str = accepted_dests.pop(source_path, None)
     _save_state(state)
 
+    # Remove from playlist (starred/favorites) if present
+    playlist = _load_playlist()
+    new_playlist = [e for e in playlist if e.get("source") != source_path]
+    if len(new_playlist) != len(playlist):
+        _save_playlist(new_playlist)
+
     deleted = False
     if dest_path_str:
         dest = Path(dest_path_str)
@@ -444,6 +450,10 @@ def api_reset_all_accepted():
     state["accepted"] = []
     state["accepted_dests"] = {}
     _save_state(state)
+
+    # Clear the entire playlist as well
+    _save_playlist([])
+
     return jsonify({"ok": True, "errors": errors})
 
 
