@@ -687,6 +687,7 @@
     text-transform: uppercase;
     letter-spacing: .9px;
     color: var(--muted);
+    padding-top: 5px;
   }
   .search-field input {
     background: var(--surface2);
@@ -700,6 +701,38 @@
     transition: border-color .15s;
   }
   .search-field input:focus { border-color: var(--accent); }
+
+  /* ── Input wrapper with inline clear button ──────────────────────── */
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-wrap input {
+    flex: 1;
+    padding-right: 36px;
+  }
+  .btn-input-clear {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .85rem;
+    line-height: 1;
+    padding: 3px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s, color .15s;
+  }
+  .btn-input-clear.visible {
+    opacity: 0.55;
+    pointer-events: auto;
+  }
+  .btn-input-clear.visible:hover { opacity: 1; color: var(--text); }
+
   .search-modal-actions { display: flex; gap: 10px; margin-top: 10px; }
   .btn-modal-search {
     flex: 1;
@@ -869,6 +902,58 @@
     color: var(--muted);
     margin-top: 2px;
   }
+
+  /* ── Song list: remove button & clickable pending ─────────────────── */
+  .song-item-remove-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px 7px;
+    border-radius: 5px;
+    font-size: .85rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color .15s, background .15s;
+  }
+  .song-item-remove-btn:hover { color: var(--skip); background: #2a1515; }
+
+  .song-list-item-clickable {
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .song-list-item-clickable:hover { border-color: var(--accent); background: #14172a; }
+
+  /* ── Modal search input ───────────────────────────────────────────── */
+  .songs-modal-search-wrap { flex-shrink: 0; }
+  .songs-modal-search-wrap input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 14px;
+    color: var(--text);
+    font-size: .88rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .songs-modal-search-wrap input:focus { border-color: var(--accent); }
+
+  /* ── Reset-all accepted button ────────────────────────────────────── */
+  .btn-reset-all {
+    width: 100%;
+    background: #1a0f0f;
+    border: 1px solid var(--skip);
+    border-radius: 10px;
+    padding: 10px 18px;
+    color: var(--skip);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-reset-all:hover { background: #2d1010; }
 </style>
 </head>
 <body>
@@ -924,15 +1009,24 @@
     <div id="search-step-1">
       <div class="search-field">
         <label>Titolo del brano</label>
-        <input type="text" id="search-input-title" placeholder="es. It's My Life" />
+        <div class="input-wrap">
+          <input type="text" id="search-input-title" placeholder="es. It's My Life" />
+          <button class="btn-input-clear" id="btn-clear-title" tabindex="-1" title="Cancella">✕</button>
+        </div>
       </div>
       <div class="search-field">
         <label>Artista</label>
-        <input type="text" id="search-input-artist" placeholder="es. Bon Jovi" />
+        <div class="input-wrap">
+          <input type="text" id="search-input-artist" placeholder="es. Bon Jovi" />
+          <button class="btn-input-clear" id="btn-clear-artist" tabindex="-1" title="Cancella">✕</button>
+        </div>
       </div>
       <div class="search-field">
         <label>Album</label>
-        <input type="text" id="search-input-album" placeholder="es. Cross Road" />
+        <div class="input-wrap">
+          <input type="text" id="search-input-album" placeholder="es. Cross Road" />
+          <button class="btn-input-clear" id="btn-clear-album" tabindex="-1" title="Cancella">✕</button>
+        </div>
       </div>
       <div class="search-modal-actions">
         <button class="btn-modal-cancel" id="btn-modal-cancel">Annulla</button>
@@ -991,6 +1085,12 @@
     </div>
     <div class="songs-modal-requeue" id="songs-modal-requeue" style="display:none">
       <button class="btn-requeue" id="btn-requeue-skipped">↩ Rimetti tutti in coda</button>
+    </div>
+    <div id="songs-modal-reset-all" style="display:none">
+      <button class="btn-reset-all" id="btn-reset-all-accepted">↩ Rimetti tutti in Rimanenti</button>
+    </div>
+    <div class="songs-modal-search-wrap" id="songs-modal-search-wrap" style="display:none">
+      <input type="text" id="songs-modal-search" placeholder="🔍 Cerca brano…" />
     </div>
     <div class="songs-list" id="songs-list"></div>
   </div>
@@ -1201,6 +1301,7 @@ function buildCard(data) {
     };
     audioEl.onended = () => {
       if (pbtn) pbtn.textContent = '▶';
+      loadNext();
     };
   }, 0);
 
@@ -1444,7 +1545,11 @@ const _SONGS_MODAL_TITLES = {
 
 async function openSongsModal(type) {
   document.getElementById('songs-modal-title').textContent = _SONGS_MODAL_TITLES[type] || '📋 Elenco';
-  document.getElementById('songs-modal-requeue').style.display = type === 'skipped' ? '' : 'none';
+  document.getElementById('songs-modal-requeue').style.display   = type === 'skipped'  ? '' : 'none';
+  document.getElementById('songs-modal-reset-all').style.display = type === 'accepted' ? '' : 'none';
+  const searchWrap = document.getElementById('songs-modal-search-wrap');
+  searchWrap.style.display = type === 'pending' ? '' : 'none';
+  if (type === 'pending') document.getElementById('songs-modal-search').value = '';
   const list = document.getElementById('songs-list');
   list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem"><div class="spinner" style="margin:0 auto 8px"></div>Carico…</div>';
   document.getElementById('songs-modal-overlay').classList.add('open');
@@ -1456,7 +1561,16 @@ async function openSongsModal(type) {
   }
 }
 
+let _currentSongsType = '';
+let _currentSongsData = [];
+
 function renderSongsList(songs, type) {
+  _currentSongsType = type;
+  _currentSongsData = songs;
+  _renderFilteredSongs(songs, type);
+}
+
+function _renderFilteredSongs(songs, type) {
   const list = document.getElementById('songs-list');
   if (!songs.length) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">Nessun brano.</div>';
@@ -1466,21 +1580,137 @@ function renderSongsList(songs, type) {
   for (const s of songs) {
     const item = document.createElement('div');
     item.className = 'song-list-item';
+
     if (type === 'playlist') {
-      item.innerHTML =
-        `<div class="song-item-name">${esc(s.title || '—')}</div>` +
-        `<div class="song-item-meta">${esc(s.artist || '—')} — ${esc(s.album || '—')}</div>`;
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div class="song-item-name">${esc(s.title || '—')}</div>
+            <div class="song-item-meta">${esc(s.artist || '—')} — ${esc(s.album || '—')}</div>
+          </div>
+          <button class="song-item-remove-btn" title="Rimuovi dai preferiti">✕</button>
+        </div>`;
+      item.querySelector('.song-item-remove-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        unstarSong(s.source, item);
+      });
+
+    } else if (type === 'accepted') {
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div class="song-item-name">${esc(s.name || '—')}</div>
+            <div class="song-item-path">${esc(s.path || '')}</div>
+          </div>
+          <button class="song-item-remove-btn" title="Rimetti in Rimanenti">✕</button>
+        </div>`;
+      item.querySelector('.song-item-remove-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        unacceptSong(s.path, item);
+      });
+
+    } else if (type === 'skipped') {
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div class="song-item-name">${esc(s.name || '—')}</div>
+            <div class="song-item-path">${esc(s.path || '')}</div>
+          </div>
+          <button class="song-item-remove-btn" title="Rimetti in Rimanenti">✕</button>
+        </div>`;
+      item.querySelector('.song-item-remove-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        unskipSong(s.path, item);
+      });
+
     } else {
+      // pending — clickable to jump
+      item.className = 'song-list-item song-list-item-clickable';
       item.innerHTML =
         `<div class="song-item-name">${esc(s.name || '—')}</div>` +
         `<div class="song-item-path">${esc(s.path || '')}</div>`;
+      item.addEventListener('click', () => jumpToSong(s.path));
     }
     list.appendChild(item);
   }
 }
 
+function _checkEmptyList() {
+  const list = document.getElementById('songs-list');
+  if (!list.querySelector('.song-list-item')) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">Nessun brano.</div>';
+  }
+}
+
 function closeSongsModal() {
   document.getElementById('songs-modal-overlay').classList.remove('open');
+}
+
+// ── Songs modal actions ────────────────────────────────────────────────────
+
+async function unacceptSong(path, itemEl) {
+  try {
+    await api('/api/unaccept', { method: 'POST', body: JSON.stringify({ path }) });
+    itemEl.remove();
+    _currentSongsData = _currentSongsData.filter(s => s.path !== path);
+    _checkEmptyList();
+    refreshStats();
+  } catch (e) {
+    alert('Errore: ' + e);
+  }
+}
+
+async function resetAllAccepted() {
+  const count = _currentSongsData.length;
+  if (!count) return;
+  if (!confirm(
+    `Rimettere in Rimanenti tutti i ${count} brani accettati?\n\n` +
+    `I file copiati nella cartella di destinazione verranno eliminati.\n` +
+    `Quest'azione non può essere annullata.`
+  )) return;
+  try {
+    await api('/api/reset_all_accepted', { method: 'POST', body: '{}' });
+    _currentSongsData = [];
+    document.getElementById('songs-list').innerHTML =
+      '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">Nessun brano.</div>';
+    refreshStats();
+  } catch (e) {
+    alert('Errore: ' + e);
+  }
+}
+
+async function unskipSong(path, itemEl) {
+  try {
+    await api('/api/unskip', { method: 'POST', body: JSON.stringify({ path }) });
+    itemEl.remove();
+    _currentSongsData = _currentSongsData.filter(s => s.path !== path);
+    _checkEmptyList();
+    refreshStats();
+  } catch (e) {
+    alert('Errore: ' + e);
+  }
+}
+
+async function jumpToSong(path) {
+  try {
+    await api('/api/jump_to', { method: 'POST', body: JSON.stringify({ path }) });
+    closeSongsModal();
+    loadNext();
+  } catch (e) {
+    alert('Errore: ' + e);
+  }
+}
+
+async function unstarSong(source, itemEl) {
+  try {
+    await api('/api/unstar', { method: 'POST', body: JSON.stringify({ source }) });
+    itemEl.remove();
+    _currentSongsData = _currentSongsData.filter(s => s.source !== source);
+    _checkEmptyList();
+    refreshStats();
+  } catch (e) {
+    alert('Errore: ' + e);
+  }
 }
 
 document.getElementById('btn-songs-modal-close').addEventListener('click', closeSongsModal);
@@ -1495,6 +1725,17 @@ document.getElementById('btn-requeue-skipped').addEventListener('click', async (
   closeSongsModal();
   refreshStats();
   loadNext();
+});
+document.getElementById('btn-reset-all-accepted').addEventListener('click', resetAllAccepted);
+document.getElementById('songs-modal-search').addEventListener('input', (e) => {
+  if (_currentSongsType !== 'pending') return;
+  const q = e.target.value.trim().toLowerCase();
+  const filtered = q
+    ? _currentSongsData.filter(s =>
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.path || '').toLowerCase().includes(q))
+    : _currentSongsData;
+  _renderFilteredSongs(filtered, 'pending');
 });
 
 document.getElementById('stat-accepted-btn').addEventListener('click', () => openSongsModal('accepted'));
@@ -1567,15 +1808,25 @@ function _hideAllSearchSteps() {
   });
 }
 
+function _updateClearBtn(inputId, clearBtnId) {
+  const val = document.getElementById(inputId).value;
+  document.getElementById(clearBtnId).classList.toggle('visible', val.length > 0);
+}
+
 function openSearchModal() {
   if (!currentCard) return;
-  _searchTitle  = '';
-  _searchArtist = '';
-  _searchAlbum  = '';
+  const best = currentCard.best || {};
+  const ex   = currentCard.existing || {};
+  _searchTitle  = best.title  || ex.title  || '';
+  _searchArtist = best.artist || ex.artist || '';
+  _searchAlbum  = best.album  || ex.album  || '';
   _step3PrevStep = '1';
-  document.getElementById('search-input-title').value  = '';
-  document.getElementById('search-input-artist').value = '';
-  document.getElementById('search-input-album').value  = '';
+  document.getElementById('search-input-title').value  = _searchTitle;
+  document.getElementById('search-input-artist').value = _searchArtist;
+  document.getElementById('search-input-album').value  = _searchAlbum;
+  _updateClearBtn('search-input-title',  'btn-clear-title');
+  _updateClearBtn('search-input-artist', 'btn-clear-artist');
+  _updateClearBtn('search-input-album',  'btn-clear-album');
   document.getElementById('search-artists-list').innerHTML = '';
   document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
   _hideAllSearchSteps();
@@ -1972,6 +2223,20 @@ document.getElementById('search-modal-overlay').addEventListener('click', (e) =>
 document.getElementById('search-input-title').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doSearch(); });
 document.getElementById('search-input-artist').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 document.getElementById('search-input-album').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doSearch(); });
+
+// Clear buttons
+[['search-input-title', 'btn-clear-title'], ['search-input-artist', 'btn-clear-artist'], ['search-input-album', 'btn-clear-album']]
+  .forEach(([inputId, btnId]) => {
+    const input = document.getElementById(inputId);
+    const btn   = document.getElementById(btnId);
+    input.addEventListener('input', () => _updateClearBtn(inputId, btnId));
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      input.value = '';
+      btn.classList.remove('visible');
+      input.focus();
+    });
+  });
 
 // ── Fireworks ─────────────────────────────────────────────────────────────────
 

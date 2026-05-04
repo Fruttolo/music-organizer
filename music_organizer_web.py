@@ -52,6 +52,8 @@ def _playlist_file() -> Path:
 # In-memory fingerprint cache to avoid re-fingerprinting already looked-up files
 _fingerprint_cache: dict = {}  # path -> {"existing": ..., "candidates": [...]}
 _cache_lock = threading.Lock()
+_force_next_path: str | None = None
+_force_next_lock = threading.Lock()
 
 # ─── State helpers ─────────────────────────────────────────────────────────────
 
@@ -82,6 +84,25 @@ def _save_playlist(playlist: list) -> None:
     pf = _playlist_file()
     pf.parent.mkdir(parents=True, exist_ok=True)
     pf.write_text(json.dumps(playlist, indent=2, ensure_ascii=False), "utf-8")
+
+
+def _clean_empty_dirs(file_path: Path) -> None:
+    """Delete empty album and artist dirs after removing a dest file."""
+    out_root = Path(OUTPUT_FOLDER).resolve() if OUTPUT_FOLDER else None
+    album_dir = file_path.parent
+    if album_dir.is_dir() and not any(album_dir.iterdir()):
+        if out_root is None or album_dir.resolve() != out_root:
+            try:
+                album_dir.rmdir()
+            except Exception:
+                pass
+            artist_dir = album_dir.parent
+            if artist_dir.is_dir() and not any(artist_dir.iterdir()):
+                if out_root is None or artist_dir.resolve() != out_root:
+                    try:
+                        artist_dir.rmdir()
+                    except Exception:
+                        pass
 
 
 def _all_audio_files() -> list[str]:
@@ -122,6 +143,11 @@ def api_status():
 @app.route("/api/next")
 def api_next():
     """Return the next file to review (pending first, then skipped)."""
+    global _force_next_path
+    with _force_next_lock:
+        forced = _force_next_path
+        _force_next_path = None
+
     state    = _load_state()
     all_f    = _all_audio_files()
     accepted = set(state.get("accepted", []))
@@ -129,8 +155,10 @@ def api_next():
 
     pending = [f for f in all_f if f not in accepted and f not in skipped]
 
-    # Pick next: random from pending first, fallback to random skipped
-    if pending:
+    # Pick next: forced path first, then random from pending, fallback to random skipped
+    if forced and forced in pending:
+        candidate = forced
+    elif pending:
         candidate = random.choice(pending)
     elif skipped:
         candidate = random.choice(skipped)
@@ -234,6 +262,7 @@ def api_accept():
     if file_path in skipped:
         skipped.remove(file_path)
     skipped_offsets.pop(file_path, None)
+    state.setdefault("accepted_dests", {})[file_path] = str(dest)
 
     _save_state(state)
 
@@ -289,6 +318,7 @@ def api_star():
     if file_path in skipped:
         skipped.remove(file_path)
     skipped_offsets.pop(file_path, None)
+    state.setdefault("accepted_dests", {})[file_path] = str(dest)
 
     _save_state(state)
 
@@ -361,6 +391,108 @@ def api_reset_skipped():
     return jsonify({"ok": True})
 
 
+@app.route("/api/unaccept", methods=["POST"])
+def api_unaccept():
+    """Remove a single accepted track and delete its dest file."""
+    data = request.get_json(force=True)
+    source_path = data.get("path", "")
+    if not source_path:
+        abort(400, "Missing path")
+
+    state = _load_state()
+    accepted       = state.setdefault("accepted",       [])
+    accepted_dests = state.setdefault("accepted_dests", {})
+
+    if source_path in accepted:
+        accepted.remove(source_path)
+    dest_path_str = accepted_dests.pop(source_path, None)
+    _save_state(state)
+
+    deleted = False
+    if dest_path_str:
+        dest = Path(dest_path_str)
+        if dest.is_file():
+            try:
+                dest.unlink()
+                deleted = True
+                _clean_empty_dirs(dest)
+            except Exception as exc:
+                return jsonify({"ok": True, "deleted": False, "warning": str(exc)})
+
+    return jsonify({"ok": True, "deleted": deleted})
+
+
+@app.route("/api/reset_all_accepted", methods=["POST"])
+def api_reset_all_accepted():
+    """Remove all accepted tracks and delete their dest files."""
+    state = _load_state()
+    accepted       = state.get("accepted", [])
+    accepted_dests = state.get("accepted_dests", {})
+
+    errors = []
+    for source_path in list(accepted):
+        dest_path_str = accepted_dests.get(source_path)
+        if dest_path_str:
+            dest = Path(dest_path_str)
+            if dest.is_file():
+                try:
+                    dest.unlink()
+                    _clean_empty_dirs(dest)
+                except Exception as exc:
+                    errors.append(str(exc))
+
+    state["accepted"] = []
+    state["accepted_dests"] = {}
+    _save_state(state)
+    return jsonify({"ok": True, "errors": errors})
+
+
+@app.route("/api/unskip", methods=["POST"])
+def api_unskip():
+    """Remove a single track from the skipped list."""
+    data = request.get_json(force=True)
+    source_path = data.get("path", "")
+    if not source_path:
+        abort(400, "Missing path")
+
+    state = _load_state()
+    skipped         = state.setdefault("skipped",         [])
+    skipped_offsets = state.setdefault("skipped_offsets", {})
+
+    if source_path in skipped:
+        skipped.remove(source_path)
+    skipped_offsets.pop(source_path, None)
+    _save_state(state)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/jump_to", methods=["POST"])
+def api_jump_to():
+    """Force the next /api/next call to return a specific pending track."""
+    global _force_next_path
+    data = request.get_json(force=True)
+    path = data.get("path", "")
+    if not path:
+        abort(400, "Missing path")
+    with _force_next_lock:
+        _force_next_path = path
+    return jsonify({"ok": True})
+
+
+@app.route("/api/unstar", methods=["POST"])
+def api_unstar():
+    """Remove a track from the playlist by its source path."""
+    data = request.get_json(force=True)
+    source_path = data.get("source", "") or data.get("path", "")
+    if not source_path:
+        abort(400, "Missing source/path")
+
+    playlist = _load_playlist()
+    new_playlist = [t for t in playlist if t.get("source") != source_path]
+    _save_playlist(new_playlist)
+    return jsonify({"ok": True, "playlist_size": len(new_playlist)})
+
+
 @app.route("/api/list_songs")
 def api_list_songs():
     """Return the list of songs for a given category: accepted, skipped, pending, playlist."""
@@ -369,7 +501,8 @@ def api_list_songs():
 
     if kind == "accepted":
         files = state.get("accepted", [])
-        return jsonify({"songs": [{"path": f, "name": Path(f).name} for f in files]})
+        accepted_dests = state.get("accepted_dests", {})
+        return jsonify({"songs": [{"path": f, "name": Path(f).name, "dest": accepted_dests.get(f, "")} for f in files]})
 
     if kind == "skipped":
         files = state.get("skipped", [])
