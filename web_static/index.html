@@ -63,7 +63,11 @@
     white-space: nowrap;
   }
   .stat-chip .val { color: var(--text); font-weight: 600; }
-  #stat-skipped-btn:hover { border-color: var(--skip); color: var(--skip); }
+  .stat-chip-btn { cursor: pointer; transition: border-color .15s, color .15s; }
+  .stat-chip-btn:hover { border-color: var(--accent); color: var(--text); }
+  #stat-accepted-btn:hover { border-color: var(--accept); color: var(--accept); }
+  #stat-skipped-btn:hover  { border-color: var(--skip);   color: var(--skip);   }
+  #stat-playlist-btn:hover { border-color: var(--star);   color: var(--star);   }
 
   /* ── Progress bar ─────────────────────────────────────────────────── */
   .progress-wrap {
@@ -770,6 +774,101 @@
     color: var(--muted);
     margin-bottom: 8px;
   }
+
+  /* ── Songs list modal ────────────────────────────────────────────── */
+  .songs-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .songs-modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .songs-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px 18px;
+    width: min(520px, 96vw);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 16px 48px #0009;
+    max-height: 85svh;
+    overflow: hidden;
+  }
+  .songs-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .songs-modal-header h3 { font-size: 1rem; font-weight: 700; }
+  .btn-songs-modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 7px;
+    border-radius: 6px;
+    transition: color .15s;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .btn-songs-modal-close:hover { color: var(--text); }
+  .songs-modal-requeue { flex-shrink: 0; }
+  .btn-requeue {
+    width: 100%;
+    background: #3b1515;
+    border: 1px solid var(--skip);
+    border-radius: 10px;
+    padding: 10px 18px;
+    color: var(--skip);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-requeue:hover { background: #5a1e1e; }
+  .songs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .song-list-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: .82rem;
+    word-break: break-all;
+  }
+  .song-item-name {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .song-item-path {
+    font-size: .7rem;
+    color: var(--muted);
+    font-family: 'Consolas', 'SF Mono', monospace;
+  }
+  .song-item-meta {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
 </style>
 </head>
 <body>
@@ -778,10 +877,10 @@
 <header>
   <h1>🎵 Music Organizer</h1>
   <div class="stats">
-    <span class="stat-chip">✅ <span class="val" id="s-accepted">–</span></span>
-    <span class="stat-chip" id="stat-skipped-btn" title="Rimetti in coda gli skippati" style="cursor:pointer">⏩ <span class="val" id="s-skipped">–</span></span>
-    <span class="stat-chip">⏳ <span class="val" id="s-pending">–</span></span>
-    <span class="stat-chip">⭐ <span class="val" id="s-playlist">–</span></span>
+    <span class="stat-chip stat-chip-btn" id="stat-accepted-btn" title="Mostra accettati">✅ <span class="val" id="s-accepted">–</span></span>
+    <span class="stat-chip stat-chip-btn" id="stat-skipped-btn"  title="Mostra skippati">⏩ <span class="val" id="s-skipped">–</span></span>
+    <span class="stat-chip stat-chip-btn" id="stat-pending-btn"  title="Mostra rimanenti">⏳ <span class="val" id="s-pending">–</span></span>
+    <span class="stat-chip stat-chip-btn" id="stat-playlist-btn" title="Mostra preferiti">⭐ <span class="val" id="s-playlist">–</span></span>
   </div>
 </header>
 
@@ -821,28 +920,79 @@
   <div class="search-modal">
     <h3 id="search-modal-title">🔍 Ricerca manuale</h3>
 
-    <!-- Step 1: inserisci titolo → scegli artista -->
+    <!-- Step 1: inserisci titolo e/o artista e/o album -->
     <div id="search-step-1">
       <div class="search-field">
         <label>Titolo del brano</label>
         <input type="text" id="search-input-title" placeholder="es. It's My Life" />
       </div>
+      <div class="search-field">
+        <label>Artista</label>
+        <input type="text" id="search-input-artist" placeholder="es. Bon Jovi" />
+      </div>
+      <div class="search-field">
+        <label>Album</label>
+        <input type="text" id="search-input-album" placeholder="es. Cross Road" />
+      </div>
       <div class="search-modal-actions">
         <button class="btn-modal-cancel" id="btn-modal-cancel">Annulla</button>
-        <button class="btn-modal-search" id="btn-search-artists">Cerca artisti</button>
+        <button class="btn-modal-search" id="btn-search-go">Cerca</button>
       </div>
+    </div>
+
+    <!-- Step 2A: scegli artista (solo titolo inserito) -->
+    <div id="search-step-2a" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn-modal-back" id="btn-back-to-1-from-2a">← Modifica ricerca</button>
+        <span class="search-step2-info" id="search-step2a-info"></span>
+      </div>
+      <div class="search-step2-lbl">Scegli l'artista</div>
       <div class="search-results" id="search-artists-list"></div>
     </div>
 
-    <!-- Step 2: scegli album (nascosto finché non si sceglie l'artista) -->
-    <div id="search-step-2" style="display:none">
+    <!-- Step 2B: scegli brano (solo artista inserito) -->
+    <div id="search-step-2b" style="display:none">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
-        <button class="btn-modal-back" id="btn-back-artists">← Cambia artista</button>
-        <span class="search-step2-info" id="search-step2-info"></span>
+        <button class="btn-modal-back" id="btn-back-to-1-from-2b">← Modifica ricerca</button>
+        <span class="search-step2-info" id="search-step2b-info"></span>
+      </div>
+      <div class="search-step2-lbl">Scegli il brano</div>
+      <div class="search-results" id="search-tracks-list"></div>
+    </div>
+
+    <!-- Step 2C: scegli brano (album inserito, titolo assente) -->
+    <div id="search-step-2c" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn-modal-back" id="btn-back-to-1-from-2c">← Modifica ricerca</button>
+        <span class="search-step2-info" id="search-step2c-info"></span>
+      </div>
+      <div class="search-step2-lbl">Scegli il brano</div>
+      <div class="search-results" id="search-tracks-album-list"></div>
+    </div>
+
+    <!-- Step 3: scegli album -->
+    <div id="search-step-3" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn-modal-back" id="btn-back-from-3">← Indietro</button>
+        <span class="search-step2-info" id="search-step3-info"></span>
       </div>
       <div class="search-step2-lbl">Scegli l'album</div>
       <div class="search-results" id="search-albums-list"></div>
     </div>
+  </div>
+</div>
+
+<!-- ── Songs list modal ──────────────────────────────────────────────────── -->
+<div class="songs-modal-overlay" id="songs-modal-overlay">
+  <div class="songs-modal">
+    <div class="songs-modal-header">
+      <h3 id="songs-modal-title">📋 Elenco</h3>
+      <button class="btn-songs-modal-close" id="btn-songs-modal-close">✕</button>
+    </div>
+    <div class="songs-modal-requeue" id="songs-modal-requeue" style="display:none">
+      <button class="btn-requeue" id="btn-requeue-skipped">↩ Rimetti tutti in coda</button>
+    </div>
+    <div class="songs-list" id="songs-list"></div>
   </div>
 </div>
 
@@ -1283,15 +1433,74 @@ function spaceToggle() {
   if (pbtn) togglePlay(currentCard.path, pbtn);
 }
 
-// ── Reset skipped ──────────────────────────────────────────────────────────
+// ── Songs list modal ─────────────────────────────────────────────────────────
 
-document.getElementById('stat-skipped-btn').addEventListener('click', async () => {
+const _SONGS_MODAL_TITLES = {
+  accepted: '✅ Accettati',
+  skipped:  '⏩ Skippati',
+  pending:  '⏳ Rimanenti',
+  playlist: '⭐ Preferiti',
+};
+
+async function openSongsModal(type) {
+  document.getElementById('songs-modal-title').textContent = _SONGS_MODAL_TITLES[type] || '📋 Elenco';
+  document.getElementById('songs-modal-requeue').style.display = type === 'skipped' ? '' : 'none';
+  const list = document.getElementById('songs-list');
+  list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem"><div class="spinner" style="margin:0 auto 8px"></div>Carico…</div>';
+  document.getElementById('songs-modal-overlay').classList.add('open');
+  try {
+    const data = await api('/api/list_songs?type=' + type);
+    renderSongsList(data.songs || [], type);
+  } catch (e) {
+    list.innerHTML = `<div style="color:var(--skip);padding:8px;font-size:.82rem">Errore: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderSongsList(songs, type) {
+  const list = document.getElementById('songs-list');
+  if (!songs.length) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">Nessun brano.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const s of songs) {
+    const item = document.createElement('div');
+    item.className = 'song-list-item';
+    if (type === 'playlist') {
+      item.innerHTML =
+        `<div class="song-item-name">${esc(s.title || '—')}</div>` +
+        `<div class="song-item-meta">${esc(s.artist || '—')} — ${esc(s.album || '—')}</div>`;
+    } else {
+      item.innerHTML =
+        `<div class="song-item-name">${esc(s.name || '—')}</div>` +
+        `<div class="song-item-path">${esc(s.path || '')}</div>`;
+    }
+    list.appendChild(item);
+  }
+}
+
+function closeSongsModal() {
+  document.getElementById('songs-modal-overlay').classList.remove('open');
+}
+
+document.getElementById('btn-songs-modal-close').addEventListener('click', closeSongsModal);
+document.getElementById('songs-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSongsModal();
+});
+document.getElementById('btn-requeue-skipped').addEventListener('click', async () => {
   const skipped = parseInt(document.getElementById('s-skipped').textContent, 10);
   if (!skipped) return;
   if (!confirm(`Rimettere in coda ${skipped} brano/i skippato/i?`)) return;
   await api('/api/reset_skipped', { method: 'POST', body: '{}' });
+  closeSongsModal();
+  refreshStats();
   loadNext();
 });
+
+document.getElementById('stat-accepted-btn').addEventListener('click', () => openSongsModal('accepted'));
+document.getElementById('stat-skipped-btn').addEventListener('click',  () => openSongsModal('skipped'));
+document.getElementById('stat-pending-btn').addEventListener('click',  () => openSongsModal('pending'));
+document.getElementById('stat-playlist-btn').addEventListener('click', () => openSongsModal('playlist'));
 
 document.getElementById('btn-accept').addEventListener('click', doAccept);
 document.getElementById('btn-skip').addEventListener('click', doSkip);
@@ -1345,18 +1554,32 @@ function setActionsVisible(v) {
   document.getElementById('actions').style.visibility = v ? 'visible' : 'hidden';
 }
 
-// ── Manual search modal (wizard: titolo → artista → album) ────────────────
+// ── Manual search modal (wizard multi-step) ───────────────────────────────
 
-let _searchTitle = '';
+let _searchTitle   = '';
+let _searchArtist  = '';
+let _searchAlbum   = '';
+let _step3PrevStep = '1'; // '1' | 'step-2a'
+
+function _hideAllSearchSteps() {
+  ['search-step-1','search-step-2a','search-step-2b','search-step-2c','search-step-3'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+}
 
 function openSearchModal() {
   if (!currentCard) return;
-  _searchTitle = '';
-  document.getElementById('search-input-title').value = '';
+  _searchTitle  = '';
+  _searchArtist = '';
+  _searchAlbum  = '';
+  _step3PrevStep = '1';
+  document.getElementById('search-input-title').value  = '';
+  document.getElementById('search-input-artist').value = '';
+  document.getElementById('search-input-album').value  = '';
   document.getElementById('search-artists-list').innerHTML = '';
   document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
+  _hideAllSearchSteps();
   document.getElementById('search-step-1').style.display = '';
-  document.getElementById('search-step-2').style.display = 'none';
   document.getElementById('search-modal-overlay').classList.add('open');
   document.getElementById('search-input-title').focus();
 }
@@ -1365,11 +1588,55 @@ function closeSearchModal() {
   document.getElementById('search-modal-overlay').classList.remove('open');
 }
 
-// Step 1: cerca artisti per titolo
-async function doSearchArtists() {
-  const title = document.getElementById('search-input-title').value.trim();
-  if (!title) return;
-  _searchTitle = title;
+// Step 1: decide flusso in base ai campi compilati
+// ─────────────────────────────────────────────────────────────────────────────
+// Solo Titolo              → Step 2A (scegli artista) → Step 3 (scegli album)
+// Solo Artista             → Step 2B (scegli brano)   → applica direttamente
+// Solo Album               → Step 2C (scegli brano)   → applica direttamente
+// Titolo + Artista         → Step 3  (scegli album)
+// Titolo + Album           → Step 2A (scegli artista) → applica direttamente
+// Artista + Album          → Step 2C (scegli brano)   → applica direttamente
+// Titolo + Artista + Album → applica direttamente
+async function doSearch() {
+  const title  = document.getElementById('search-input-title').value.trim();
+  const artist = document.getElementById('search-input-artist').value.trim();
+  const album  = document.getElementById('search-input-album').value.trim();
+  if (!title && !artist && !album) return;
+
+  _searchTitle  = title;
+  _searchArtist = artist;
+  _searchAlbum  = album;
+
+  if (title && artist && album) {
+    // Tutti e tre → applica direttamente
+    applySearchResult({ title, artist, album, release_mbid: '' });
+  } else if (title && artist && !album) {
+    // Titolo + Artista → Step 3: scegli album
+    await _goSearchAlbums(title, artist, '1');
+  } else if (title && !artist) {
+    // Solo Titolo o Titolo + Album → Step 2A: scegli artista
+    await _goSearchArtists(title);
+  } else if (artist && !title) {
+    // Solo Artista o Artista + Album → Step 2B o Step 2C
+    if (album) {
+      await _goSearchTracksByAlbum(album, artist);
+    } else {
+      await _goSearchTracks(artist);
+    }
+  } else if (!title && !artist && album) {
+    // Solo Album → Step 2C: scegli brano
+    await _goSearchTracksByAlbum(album, '');
+  }
+}
+
+// Step 2A: cerca artisti per titolo
+async function _goSearchArtists(title) {
+  _hideAllSearchSteps();
+  document.getElementById('search-modal-title').textContent = '🔍 Scegli l\'artista';
+  document.getElementById('search-step2a-info').textContent = _searchAlbum
+    ? `"${title}"  —  💿 ${_searchAlbum}`
+    : `"${title}"`;
+  document.getElementById('search-step-2a').style.display = '';
 
   const resList = document.getElementById('search-artists-list');
   resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Ricerca in corso…</div>';
@@ -1401,12 +1668,97 @@ function renderArtistResults(artists) {
   }
 }
 
-// Step 2: seleziona artista → carica album
+// Seleziona artista in step-2a
 async function selectArtist(artist) {
-  document.getElementById('search-step-1').style.display = 'none';
+  _searchArtist = artist.name;
+  if (_searchAlbum) {
+    // Titolo + Artista + Album → applica direttamente
+    applySearchResult({ title: _searchTitle, artist: _searchArtist, album: _searchAlbum, release_mbid: '' });
+  } else {
+    // Titolo + Artista → Step 3: scegli album
+    await _goSearchAlbums(_searchTitle, artist.name, 'step-2a');
+  }
+}
+
+// Step 2B: cerca brani per artista (solo artista, nessun album)
+async function _goSearchTracks(artist) {
+  _hideAllSearchSteps();
+  document.getElementById('search-modal-title').textContent = '🎵 Scegli il brano';
+  document.getElementById('search-step2b-info').textContent = artist;
+  document.getElementById('search-step-2b').style.display = '';
+
+  const resList = document.getElementById('search-tracks-list');
+  resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Ricerca in corso…</div>';
+
+  try {
+    const data = await api('/api/search_tracks_by_artist', {
+      method: 'POST',
+      body: JSON.stringify({ artist }),
+    });
+    renderTrackResults(data.tracks || [], resList);
+  } catch (e) {
+    resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
+  }
+}
+
+// Step 2C: cerca brani per album (+ eventuale artista)
+async function _goSearchTracksByAlbum(album, artist) {
+  _hideAllSearchSteps();
+  document.getElementById('search-modal-title').textContent = '🎵 Scegli il brano';
+  document.getElementById('search-step2c-info').textContent = artist ? `${artist}  —  💿 ${album}` : `💿 ${album}`;
+  document.getElementById('search-step-2c').style.display = '';
+
+  const resList = document.getElementById('search-tracks-album-list');
+  resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Ricerca in corso…</div>';
+
+  try {
+    const data = await api('/api/search_tracks_by_album', {
+      method: 'POST',
+      body: JSON.stringify({ album, artist }),
+    });
+    renderTrackResults(data.tracks || [], resList, true);
+  } catch (e) {
+    resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderTrackResults(tracks, resList, applyDirectly = false) {
+  if (!tracks.length) {
+    resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Nessun brano trovato.</div>';
+    return;
+  }
+  resList.innerHTML = '';
+  for (const t of tracks) {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.innerHTML = `
+      <div class="search-result-title">${esc(t.title || '—')}</div>
+      <div class="search-result-sub">${esc(t.artist || '—')}${t.album ? '  —  ' + esc(t.album) : ''}</div>
+    `;
+    item.addEventListener('click', () => {
+      if (applyDirectly) {
+        applySearchResult(t);
+      } else {
+        selectTrack(t);
+      }
+    });
+    resList.appendChild(item);
+  }
+}
+
+// Seleziona brano in step-2b → applica direttamente (il track ha artist + album)
+function selectTrack(track) {
+  _searchTitle = track.title;
+  applySearchResult(track);
+}
+
+// Step 3: carica e mostra album
+async function _goSearchAlbums(title, artist, prevStep) {
+  _step3PrevStep = prevStep;
+  _hideAllSearchSteps();
   document.getElementById('search-modal-title').textContent = '🎵 Scegli l\'album';
-  document.getElementById('search-step2-info').textContent = `${artist.name}  —  "${_searchTitle}"`;
-  document.getElementById('search-step-2').style.display = '';
+  document.getElementById('search-step3-info').textContent = `${artist}  —  "${title}"`;
+  document.getElementById('search-step-3').style.display = '';
 
   const resList = document.getElementById('search-albums-list');
   resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Carico album…</div>';
@@ -1414,9 +1766,9 @@ async function selectArtist(artist) {
   try {
     const data = await api('/api/search_albums', {
       method: 'POST',
-      body: JSON.stringify({ title: _searchTitle, artist: artist.name }),
+      body: JSON.stringify({ title, artist }),
     });
-    renderAlbumResults(data.albums || [], artist.name);
+    renderAlbumResults(data.albums || [], artist);
   } catch (e) {
     resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
   }
@@ -1443,10 +1795,21 @@ function renderAlbumResults(albums, artistName) {
   }
 }
 
-function backToArtists() {
-  document.getElementById('search-step-2').style.display = 'none';
+function backToStep1() {
+  _hideAllSearchSteps();
   document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
   document.getElementById('search-step-1').style.display = '';
+}
+
+function backFromStep3() {
+  _hideAllSearchSteps();
+  if (_step3PrevStep === 'step-2a') {
+    document.getElementById('search-modal-title').textContent = '🔍 Scegli l\'artista';
+    document.getElementById('search-step-2a').style.display = '';
+  } else {
+    document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
+    document.getElementById('search-step-1').style.display = '';
+  }
 }
 
 function applySearchResult(candidate) {
@@ -1598,12 +1961,17 @@ document.getElementById('cover-modal-overlay').addEventListener('click', (e) => 
 
 // Wire modal buttons
 document.getElementById('btn-modal-cancel').addEventListener('click', closeSearchModal);
-document.getElementById('btn-search-artists').addEventListener('click', doSearchArtists);
-document.getElementById('btn-back-artists').addEventListener('click', backToArtists);
+document.getElementById('btn-search-go').addEventListener('click', doSearch);
+document.getElementById('btn-back-to-1-from-2a').addEventListener('click', backToStep1);
+document.getElementById('btn-back-to-1-from-2b').addEventListener('click', backToStep1);
+document.getElementById('btn-back-to-1-from-2c').addEventListener('click', backToStep1);
+document.getElementById('btn-back-from-3').addEventListener('click', backFromStep3);
 document.getElementById('search-modal-overlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeSearchModal();
 });
-document.getElementById('search-input-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearchArtists(); });
+document.getElementById('search-input-title').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('search-input-artist').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('search-input-album').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doSearch(); });
 
 // ── Fireworks ─────────────────────────────────────────────────────────────────
 

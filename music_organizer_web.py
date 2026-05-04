@@ -361,6 +361,33 @@ def api_reset_skipped():
     return jsonify({"ok": True})
 
 
+@app.route("/api/list_songs")
+def api_list_songs():
+    """Return the list of songs for a given category: accepted, skipped, pending, playlist."""
+    kind  = request.args.get("type", "")
+    state = _load_state()
+
+    if kind == "accepted":
+        files = state.get("accepted", [])
+        return jsonify({"songs": [{"path": f, "name": Path(f).name} for f in files]})
+
+    if kind == "skipped":
+        files = state.get("skipped", [])
+        return jsonify({"songs": [{"path": f, "name": Path(f).name} for f in files]})
+
+    if kind == "pending":
+        all_f    = _all_audio_files()
+        accepted = set(state.get("accepted", []))
+        skipped  = set(state.get("skipped",  []))
+        files    = [f for f in all_f if f not in accepted and f not in skipped]
+        return jsonify({"songs": [{"path": f, "name": Path(f).name} for f in files]})
+
+    if kind == "playlist":
+        return jsonify({"songs": _load_playlist()})
+
+    abort(400, "Invalid type — use accepted, skipped, pending or playlist")
+
+
 @app.route("/api/search_by_text", methods=["POST"])
 def api_search_by_text():
     """Search MusicBrainz recordings by title and/or artist."""
@@ -430,14 +457,14 @@ _COMPILATION_RE = re.compile(
 
 @app.route("/api/search_artists", methods=["POST"])
 def api_search_artists():
-    """Given a song title, return a ranked list of artists that performed it."""
+    """Given a song title, search recordings of that work and return a ranked list of performing artists."""
     data  = request.get_json(force=True)
     title = str(data.get("title", "")).strip()
     if not title:
         abort(400, "Provide a title")
 
     url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
-        "query": f'recording:"{title}"',
+        "query": f'work:"{title}"',
         "fmt":   "json",
         "limit": "25",
     })
@@ -472,6 +499,111 @@ def api_search_artists():
     return jsonify({"artists": [{"name": a["name"], "mbid": a["mbid"]} for a in artists[:12]]})
 
 
+@app.route("/api/search_tracks_by_artist", methods=["POST"])
+def api_search_tracks_by_artist():
+    """Given an artist name, return their popular recordings."""
+    data   = request.get_json(force=True)
+    artist = str(data.get("artist", "")).strip()
+    if not artist:
+        abort(400, "Provide an artist")
+
+    url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
+        "query": f'artist:"{artist}"',
+        "fmt":   "json",
+        "limit": "25",
+    })
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        abort(502, f"MusicBrainz error: {exc}")
+
+    track_map: dict = {}
+    for recording in result.get("recordings", []):
+        score    = int(recording.get("score", 0))
+        title_r  = recording.get("title", "")
+        ac       = recording.get("artist-credit", [])
+        artist_r = ac[0].get("name", "") if ac else ""
+        releases = recording.get("releases", [])
+        album_r  = releases[0].get("title", "") if releases else ""
+        mbid_r   = releases[0].get("id",    "") if releases else ""
+
+        if not title_r:
+            continue
+        key = title_r.lower()
+        if key not in track_map:
+            track_map[key] = {
+                "title": title_r, "artist": artist_r,
+                "album": album_r, "release_mbid": mbid_r, "score": score,
+            }
+        elif score > track_map[key]["score"]:
+            track_map[key].update({
+                "title": title_r, "artist": artist_r,
+                "album": album_r, "release_mbid": mbid_r, "score": score,
+            })
+
+    tracks = sorted(track_map.values(), key=lambda t: -t["score"])
+    return jsonify({"tracks": tracks[:15]})
+
+
+@app.route("/api/search_tracks_by_album", methods=["POST"])
+def api_search_tracks_by_album():
+    """Given an album (and optional artist), return recordings from that album."""
+    data   = request.get_json(force=True)
+    album  = str(data.get("album",  "")).strip()
+    artist = str(data.get("artist", "")).strip()
+    if not album:
+        abort(400, "Provide an album")
+
+    parts = [f'release:"{album}"']
+    if artist:
+        parts.append(f'artist:"{artist}"')
+
+    url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
+        "query": " AND ".join(parts),
+        "fmt":   "json",
+        "limit": "25",
+    })
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        abort(502, f"MusicBrainz error: {exc}")
+
+    track_map: dict = {}
+    for recording in result.get("recordings", []):
+        score    = int(recording.get("score", 0))
+        title_r  = recording.get("title", "")
+        ac       = recording.get("artist-credit", [])
+        artist_r = ac[0].get("name", "") if ac else ""
+        releases = recording.get("releases", [])
+        album_r  = releases[0].get("title", "") if releases else ""
+        mbid_r   = releases[0].get("id",    "") if releases else ""
+
+        if not title_r:
+            continue
+        key = title_r.lower()
+        if key not in track_map:
+            track_map[key] = {
+                "title": title_r, "artist": artist_r,
+                "album": album_r, "release_mbid": mbid_r, "score": score,
+            }
+        elif score > track_map[key]["score"]:
+            track_map[key].update({
+                "title": title_r, "artist": artist_r,
+                "album": album_r, "release_mbid": mbid_r, "score": score,
+            })
+
+    tracks = sorted(track_map.values(), key=lambda t: -t["score"])
+    return jsonify({"tracks": tracks[:15]})
+
+
 @app.route("/api/search_albums", methods=["POST"])
 def api_search_albums():
     """Given title + artist, return albums ranked with the original release first."""
@@ -482,7 +614,7 @@ def api_search_albums():
         abort(400, "Provide title and artist")
 
     url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
-        "query": f'recording:"{title}" AND artist:"{artist}"',
+        "query": f'work:"{title}" AND artist:"{artist}"',
         "fmt":   "json",
         "limit": "25",
     })
