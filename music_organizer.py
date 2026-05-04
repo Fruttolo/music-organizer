@@ -137,6 +137,23 @@ def get_existing_tags(file_path: Path) -> dict:
     return {"title": "", "artist": "", "album": ""}
 
 
+def write_tags(file_path: Path, title: str, artist: str, album: str) -> None:
+    """Write title/artist/album tags into the audio file using mutagen."""
+    try:
+        audio = MutagenFile(str(file_path), easy=True)
+        if audio is None:
+            return
+        if title:
+            audio["title"] = [title]
+        if artist:
+            audio["artist"] = [artist]
+        if album:
+            audio["album"] = [album]
+        audio.save()
+    except Exception as exc:
+        console.print(f"  [yellow]Warning: could not write tags:[/yellow] {exc}")
+
+
 # ─── File-system helpers ───────────────────────────────────────────────────────
 
 def sanitize(name: str) -> str:
@@ -286,6 +303,7 @@ def process_file(
         output_dir,
         copy=copy,
     )
+    write_tags(dest, selected.get("title", ""), selected.get("artist", ""), selected.get("album", ""))
     verb = "Copied" if copy else "Moved"
     console.print(f"  [green]✓ {verb}:[/green] {dest}")
     return True

@@ -26,6 +26,7 @@ from music_organizer import (
     lookup_acoustid,
     organize_file,
     sanitize,
+    write_tags,
     ACOUSTID_API_KEY,
 )
 
@@ -211,6 +212,7 @@ def api_accept():
         out_dir,
         copy=True,  # always copy in web mode
     )
+    write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
 
     state = _load_state()
     accepted        = state.setdefault("accepted",        [])
@@ -257,6 +259,7 @@ def api_star():
         out_dir,
         copy=True,
     )
+    write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
 
     # Mark as accepted (same logic as api_accept)
     state = _load_state()

@@ -139,9 +139,7 @@
   .card-filename {
     font-size: .82rem;
     color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-break: break-all;
   }
 
   /* ── Album art placeholder ────────────────────────────────────────── */
@@ -162,15 +160,15 @@
   .card-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .card-meta .song-title {
     font-size: 1.2rem; font-weight: 700;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    word-break: break-word;
   }
   .card-meta .song-artist {
     font-size: .95rem; color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    word-break: break-word;
   }
   .card-meta .song-album {
     font-size: .85rem; color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    word-break: break-word;
   }
 
   /* ── Score badge ──────────────────────────────────────────────────── */
@@ -201,7 +199,7 @@
   }
   .tags-grid { display: grid; grid-template-columns: 60px 1fr; gap: 2px 8px; }
   .tags-grid .k { color: var(--muted); }
-  .tags-grid .v { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tags-grid .v { font-weight: 500; word-break: break-word; }
 
   /* ── Card top row ─────────────────────────────────────────────────── */
   .card-top-row {
@@ -275,9 +273,7 @@
     flex: 1;
     min-width: 0;
     font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-break: break-word;
   }
 
   /* ── Copy button ──────────────────────────────────────────────────── */
@@ -324,9 +320,7 @@
   .path-val {
     flex: 1;
     min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-break: break-all;
     color: var(--text);
     opacity: 0.8;
     font-family: 'Consolas', 'SF Mono', monospace;
