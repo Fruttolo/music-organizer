@@ -751,6 +751,24 @@
   }
   .btn-input-clear.visible:hover { opacity: 1; color: var(--text); }
 
+  .btn-input-edit {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .85rem;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 4px;
+    transition: opacity .15s, color .15s;
+    display: flex;
+    align-items: center;
+    opacity: 0.6;
+  }
+  .btn-input-edit:hover { opacity: 1; color: var(--accent); }
+
   .search-modal-actions { display: flex; gap: 10px; margin-top: 10px; }
   .btn-modal-search {
     flex: 1;
@@ -1114,6 +1132,7 @@
         <label>Titolo del brano</label>
         <div class="input-wrap">
           <input type="text" id="search-input-title" placeholder="es. It's My Life" />
+          <button class="btn-input-edit" id="btn-edit-title" tabindex="-1" title="Modifica">✏️</button>
           <button class="btn-input-clear" id="btn-clear-title" tabindex="-1" title="Cancella">✕</button>
         </div>
       </div>
@@ -1121,6 +1140,7 @@
         <label>Artista</label>
         <div class="input-wrap">
           <input type="text" id="search-input-artist" placeholder="es. Bon Jovi" />
+          <button class="btn-input-edit" id="btn-edit-artist" tabindex="-1" title="Modifica">✏️</button>
           <button class="btn-input-clear" id="btn-clear-artist" tabindex="-1" title="Cancella">✕</button>
         </div>
       </div>
@@ -1128,6 +1148,7 @@
         <label>Album</label>
         <div class="input-wrap">
           <input type="text" id="search-input-album" placeholder="es. Cross Road" />
+          <button class="btn-input-edit" id="btn-edit-album" tabindex="-1" title="Modifica">✏️</button>
           <button class="btn-input-clear" id="btn-clear-album" tabindex="-1" title="Cancella">✕</button>
         </div>
       </div>
@@ -2010,6 +2031,22 @@ function _updateClearBtn(inputId, clearBtnId) {
   document.getElementById(clearBtnId).classList.toggle('visible', val.length > 0);
 }
 
+// Imposta un campo di ricerca in modalità editing (solo mobile)
+function _setInputEditing(suffix, editing) {
+  const input    = document.getElementById('search-input-' + suffix);
+  const editBtn  = document.getElementById('btn-edit-' + suffix);
+  const clearBtn = document.getElementById('btn-clear-' + suffix);
+  if (editing) {
+    input.removeAttribute('readonly');
+    if (editBtn) editBtn.style.display = 'none';
+    clearBtn.classList.toggle('visible', input.value.length > 0);
+  } else {
+    input.setAttribute('readonly', '');
+    if (editBtn) editBtn.style.display = '';
+    clearBtn.classList.remove('visible');
+  }
+}
+
 function openSearchModal() {
   if (!currentCard) return;
   const best = currentCard.best || {};
@@ -2024,12 +2061,18 @@ function openSearchModal() {
   _updateClearBtn('search-input-title',  'btn-clear-title');
   _updateClearBtn('search-input-artist', 'btn-clear-artist');
   _updateClearBtn('search-input-album',  'btn-clear-album');
+  if ('ontouchstart' in window) {
+    // Mobile: tutti i campi partono in sola lettura; la matita sblocca la tastiera
+    ['title', 'artist', 'album'].forEach(s => _setInputEditing(s, false));
+  }
   document.getElementById('search-artists-list').innerHTML = '';
   document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
   _hideAllSearchSteps();
   document.getElementById('search-step-1').style.display = '';
   document.getElementById('search-modal-overlay').classList.add('open');
-  document.getElementById('search-input-title').focus();
+  if (!('ontouchstart' in window)) {
+    document.getElementById('search-input-title').focus();
+  }
 }
 
 function closeSearchModal() {
@@ -2421,19 +2464,51 @@ document.getElementById('search-input-title').addEventListener('keydown',  (e) =
 document.getElementById('search-input-artist').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 document.getElementById('search-input-album').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doSearch(); });
 
-// Clear buttons
-[['search-input-title', 'btn-clear-title'], ['search-input-artist', 'btn-clear-artist'], ['search-input-album', 'btn-clear-album']]
-  .forEach(([inputId, btnId]) => {
-    const input = document.getElementById(inputId);
-    const btn   = document.getElementById(btnId);
-    input.addEventListener('input', () => _updateClearBtn(inputId, btnId));
-    btn.addEventListener('click', (e) => {
+// ── Search input edit/clear wiring ─────────────────────────────────────────
+['title', 'artist', 'album'].forEach(suffix => {
+  const input    = document.getElementById('search-input-' + suffix);
+  const editBtn  = document.getElementById('btn-edit-' + suffix);
+  const clearBtn = document.getElementById('btn-clear-' + suffix);
+
+  if (!('ontouchstart' in window)) {
+    // Desktop: icona matita nascosta, bottone X funziona normalmente
+    if (editBtn) editBtn.style.display = 'none';
+    input.addEventListener('input', () => {
+      clearBtn.classList.toggle('visible', input.value.length > 0);
+    });
+    clearBtn.addEventListener('click', (e) => {
       e.preventDefault();
       input.value = '';
-      btn.classList.remove('visible');
+      clearBtn.classList.remove('visible');
       input.focus();
     });
+    return;
+  }
+
+  // Mobile: la matita entra in modalità editing
+  editBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    _setInputEditing(suffix, true);
+    input.focus();
   });
+
+  // Al blur: ripristina readonly dopo un breve delay (evita conflitti con click su X)
+  input.addEventListener('blur', () => {
+    setTimeout(() => _setInputEditing(suffix, false), 200);
+  });
+
+  input.addEventListener('input', () => {
+    if (!input.hasAttribute('readonly')) {
+      clearBtn.classList.toggle('visible', input.value.length > 0);
+    }
+  });
+
+  clearBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    input.value = '';
+    _setInputEditing(suffix, false);
+  });
+});
 
 // ── Fireworks ─────────────────────────────────────────────────────────────────
 
