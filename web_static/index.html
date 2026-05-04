@@ -962,6 +962,10 @@ async function doAccept() {
   const card = document.querySelector('.card');
   if (card) card.classList.add('fly-right');
 
+  await sleep(360);
+  setActionsVisible(false);
+  document.getElementById('deck').innerHTML = `<div class="state-screen"><div class="spinner"></div><p>Analyzing\u2026</p></div>`;
+
   try {
     await api('/api/accept', {
       method: 'POST',
@@ -969,7 +973,6 @@ async function doAccept() {
     });
   } catch (e) { console.warn(e); }
 
-  await sleep(360);
   isAnimating = false;
   currentCard = null;
   loadNext();
@@ -983,6 +986,10 @@ async function doSkip() {
   const card = document.querySelector('.card');
   if (card) card.classList.add('fly-left');
 
+  await sleep(360);
+  setActionsVisible(false);
+  document.getElementById('deck').innerHTML = `<div class="state-screen"><div class="spinner"></div><p>Analyzing\u2026</p></div>`;
+
   try {
     await api('/api/skip', {
       method: 'POST',
@@ -990,7 +997,6 @@ async function doSkip() {
     });
   } catch (e) { console.warn(e); }
 
-  await sleep(360);
   isAnimating = false;
   currentCard = null;
   loadNext();
@@ -1012,6 +1018,10 @@ async function doStar() {
   const card = document.querySelector('.card');
   if (card) card.classList.add('fly-up');
 
+  await sleep(410);
+  setActionsVisible(false);
+  document.getElementById('deck').innerHTML = `<div class="state-screen"><div class="spinner"></div><p>Analyzing\u2026</p></div>`;
+
   try {
     await api('/api/star', {
       method: 'POST',
@@ -1019,7 +1029,6 @@ async function doStar() {
     });
   } catch (e) { console.warn(e); }
 
-  await sleep(410);
   isAnimating = false;
   currentCard = null;
   loadNext();
