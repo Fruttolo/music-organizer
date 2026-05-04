@@ -1204,7 +1204,7 @@ function buildCard(data) {
   colOrig.className = 'tags-col tags-col-orig';
   const origHeader = document.createElement('div');
   origHeader.className = 'col-header';
-  origHeader.textContent = 'Originali';
+  origHeader.innerHTML = `Originali <button class="btn-manual-search" title="Porta i tag originali nei proposti">⬇️​</button>`;
   colOrig.appendChild(origHeader);
 
   for (const [k, v] of [['Title', ex.title||'—'], ['Artist', ex.artist||'—'], ['Album', ex.album||'—']]) {
@@ -1241,6 +1241,17 @@ function buildCard(data) {
   colProp.querySelector('.btn-manual-search').addEventListener('click', (e) => {
     e.stopPropagation();
     openSearchModal();
+  });
+
+  // wire copy-originals-to-proposed button
+  colOrig.querySelector('.btn-manual-search').addEventListener('click', (e) => {
+    e.stopPropagation();
+    applySearchResult({
+      title:        ex.title  || '',
+      artist:       ex.artist || '',
+      album:        ex.album  || '',
+      release_mbid: ''
+    });
   });
 
   card.appendChild(compare);
