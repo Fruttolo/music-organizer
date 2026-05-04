@@ -954,6 +954,91 @@
     transition: background .15s;
   }
   .btn-reset-all:hover { background: #2d1010; }
+
+  /* ── Duplicate check modal ─────────────────────────────────────────────── */
+  .dup-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .dup-modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .dup-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px 18px;
+    width: min(500px, 96vw);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 48px #0009;
+    max-height: 90svh;
+    overflow-y: auto;
+  }
+  .dup-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .dup-modal-header h3 { font-size: 1rem; font-weight: 700; }
+  .btn-dup-modal-close {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 1.1rem; padding: 4px 7px; border-radius: 6px;
+    transition: color .15s; line-height: 1;
+  }
+  .btn-dup-modal-close:hover { color: var(--text); }
+  .dup-modal-desc { font-size: .82rem; color: var(--muted); }
+  .dup-players { display: flex; flex-direction: column; gap: 12px; }
+  .dup-player-col {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .dup-player-col.dup-player-new   { border-color: #2d5a3d; background: #0d1f14; }
+  .dup-player-col.dup-player-exist { border-color: #4c3f20; background: #1a160a; }
+  .dup-player-label {
+    font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .8px;
+  }
+  .dup-player-col.dup-player-new   .dup-player-label { color: var(--accept); }
+  .dup-player-col.dup-player-exist .dup-player-label { color: var(--star);   }
+  .dup-player-path {
+    font-size: .7rem; color: var(--muted);
+    font-family: 'Consolas', 'SF Mono', monospace;
+    word-break: break-all; line-height: 1.4;
+  }
+  .dup-player-size { font-size: .7rem; color: var(--muted); }
+  .dup-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-dup-cancel {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; color: var(--muted);
+    font-size: .88rem; cursor: pointer; transition: background .15s; flex-shrink: 0;
+  }
+  .btn-dup-cancel:hover { background: var(--border); color: var(--text); }
+  .btn-dup-keep-exist {
+    flex: 1; background: #1f160a; border: 1px solid var(--star);
+    border-radius: 10px; padding: 10px 14px; color: var(--star);
+    font-size: .88rem; font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .btn-dup-keep-exist:hover { background: #2e2010; }
+  .btn-dup-overwrite {
+    flex: 1; background: #0f1f15; border: 1px solid var(--accept);
+    border-radius: 10px; padding: 10px 14px; color: var(--accept);
+    font-size: .88rem; font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .btn-dup-overwrite:hover { background: #143020; }
 </style>
 </head>
 <body>
@@ -1096,7 +1181,51 @@
   </div>
 </div>
 
+<!-- ── Duplicate check modal ─────────────────────────────────────────────── -->
+<div class="dup-modal-overlay" id="dup-modal-overlay">
+  <div class="dup-modal">
+    <div class="dup-modal-header">
+      <h3>⚠️ File già esistente</h3>
+      <button class="btn-dup-modal-close" id="btn-dup-modal-close">✕</button>
+    </div>
+    <p class="dup-modal-desc">Esiste già un file in questa destinazione. Ascolta entrambi e scegli quale tenere.</p>
+    <div class="dup-players">
+      <div class="dup-player-col dup-player-new">
+        <div class="dup-player-label">🆕 File nuovo (da copiare)</div>
+        <div class="dup-player-path" id="dup-new-path"></div>
+        <div class="dup-player-size" id="dup-new-size"></div>
+        <div class="player-bar">
+          <button class="play-btn" id="dup-play-new" title="Riproduci file nuovo">▶</button>
+          <div class="waveform-wrap">
+            <input type="range" class="audio-seek" id="dup-seek-new" value="0" min="0" max="100" step="0.1" />
+            <div class="audio-time" id="dup-time-new">0:00 / 0:00</div>
+          </div>
+        </div>
+      </div>
+      <div class="dup-player-col dup-player-exist">
+        <div class="dup-player-label">📁 File esistente (nella destinazione)</div>
+        <div class="dup-player-path" id="dup-exist-path"></div>
+        <div class="dup-player-size" id="dup-exist-size"></div>
+        <div class="player-bar">
+          <button class="play-btn" id="dup-play-exist" title="Riproduci file esistente">▶</button>
+          <div class="waveform-wrap">
+            <input type="range" class="audio-seek" id="dup-seek-exist" value="0" min="0" max="100" step="0.1" />
+            <div class="audio-time" id="dup-time-exist">0:00 / 0:00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dup-modal-actions">
+      <button class="btn-dup-cancel"     id="btn-dup-cancel">Annulla</button>
+      <button class="btn-dup-keep-exist" id="btn-dup-keep-exist">📁 Tieni esistente</button>
+      <button class="btn-dup-overwrite"  id="btn-dup-overwrite">🆕 Sovrascrivi con nuovo</button>
+    </div>
+  </div>
+</div>
+
 <audio id="player" preload="auto"></audio>
+<audio id="dup-audio-new"   preload="none"></audio>
+<audio id="dup-audio-exist" preload="none"></audio>
 <canvas id="fireworks-canvas" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:999;"></canvas>
 
 <script>
@@ -1384,6 +1513,10 @@ async function loadNext() {
 
 async function doAccept() {
   if (!currentCard || isAnimating) return;
+
+  const dup = await checkDuplicate(currentCard.path, currentCard.best || {});
+  if (dup && dup.exists) { showDuplicateModal(dup, 'accept'); return; }
+
   isAnimating = true;
   stopAudio();
 
@@ -1432,6 +1565,10 @@ async function doSkip() {
 
 async function doStar() {
   if (!currentCard || isAnimating) return;
+
+  const dup = await checkDuplicate(currentCard.path, currentCard.best || {});
+  if (dup && dup.exists) { showDuplicateModal(dup, 'star'); return; }
+
   isAnimating = true;
   stopAudio();
 
@@ -2338,6 +2475,146 @@ document.getElementById('search-input-album').addEventListener('keydown',  (e) =
     if (!rafId) rafId = requestAnimationFrame(frame);
   };
 })();
+
+// ── Duplicate check modal ─────────────────────────────────────────────────
+
+const _dupAudioNew   = document.getElementById('dup-audio-new');
+const _dupAudioExist = document.getElementById('dup-audio-exist');
+let _dupPendingAction = null;  // 'accept' | 'star'
+let _dupPendingCard   = null;
+
+(function () {
+  function setupDupPlayer(audioEl, playBtnId, seekId, timeId, otherAudioEl, otherPlayBtnId) {
+    audioEl.ontimeupdate = () => {
+      if (!audioEl.duration) return;
+      document.getElementById(seekId).value       = audioEl.currentTime / audioEl.duration * 100;
+      document.getElementById(timeId).textContent = `${fmt(audioEl.currentTime)} / ${fmt(audioEl.duration)}`;
+    };
+    audioEl.onended = () => { document.getElementById(playBtnId).textContent = '▶'; };
+    document.getElementById(playBtnId).addEventListener('click', () => {
+      if (audioEl.paused) {
+        otherAudioEl.pause();
+        document.getElementById(otherPlayBtnId).textContent = '▶';
+        audioEl.play().catch(() => {});
+        document.getElementById(playBtnId).textContent = '⏸';
+      } else {
+        audioEl.pause();
+        document.getElementById(playBtnId).textContent = '▶';
+      }
+    });
+    document.getElementById(seekId).addEventListener('input', () => {
+      if (audioEl.duration)
+        audioEl.currentTime = audioEl.duration * (document.getElementById(seekId).value / 100);
+    });
+  }
+  setupDupPlayer(_dupAudioNew,   'dup-play-new',   'dup-seek-new',   'dup-time-new',   _dupAudioExist, 'dup-play-exist');
+  setupDupPlayer(_dupAudioExist, 'dup-play-exist', 'dup-seek-exist', 'dup-time-exist', _dupAudioNew,   'dup-play-new');
+})();
+
+async function checkDuplicate(path, choice) {
+  try {
+    return await api('/api/check_duplicate', {
+      method: 'POST',
+      body: JSON.stringify({ path, choice }),
+    });
+  } catch (e) {
+    console.warn('checkDuplicate error', e);
+    return { exists: false };
+  }
+}
+
+function showDuplicateModal(dupInfo, action) {
+  if (!currentCard) return;
+  _dupPendingAction = action;
+  _dupPendingCard   = { ...currentCard };
+
+  stopAudio();
+
+  // Reset both players
+  _dupAudioNew.pause();   _dupAudioNew.src   = '';  _dupAudioNew.currentTime   = 0;
+  _dupAudioExist.pause(); _dupAudioExist.src = '';  _dupAudioExist.currentTime = 0;
+  document.getElementById('dup-play-new').textContent   = '▶';
+  document.getElementById('dup-play-exist').textContent = '▶';
+  document.getElementById('dup-seek-new').value         = 0;
+  document.getElementById('dup-seek-exist').value       = 0;
+  document.getElementById('dup-time-new').textContent   = '0:00 / 0:00';
+  document.getElementById('dup-time-exist').textContent = '0:00 / 0:00';
+
+  document.getElementById('dup-new-path').textContent   = currentCard.path;
+  document.getElementById('dup-exist-path').textContent = dupInfo.dest;
+  document.getElementById('dup-new-size').textContent   = dupInfo.src_size_kb  ? `${dupInfo.src_size_kb} KB`  : '';
+  document.getElementById('dup-exist-size').textContent = dupInfo.dest_size_kb ? `${dupInfo.dest_size_kb} KB` : '';
+
+  _dupAudioNew.src   = '/api/audio?path='      + encodeURIComponent(currentCard.path);
+  _dupAudioExist.src = '/api/audio_dest?path=' + encodeURIComponent(dupInfo.dest);
+
+  document.getElementById('dup-modal-overlay').classList.add('open');
+}
+
+function closeDuplicateModal() {
+  _dupAudioNew.pause();   _dupAudioNew.src   = '';
+  _dupAudioExist.pause(); _dupAudioExist.src = '';
+  document.getElementById('dup-play-new').textContent   = '▶';
+  document.getElementById('dup-play-exist').textContent = '▶';
+  document.getElementById('dup-modal-overlay').classList.remove('open');
+}
+
+async function _dupAction(mode) {
+  // mode: 'overwrite' | 'keep_existing'
+  if (!_dupPendingCard) return;
+  const savedCard = _dupPendingCard;
+  const action    = _dupPendingAction;
+  _dupPendingCard   = null;
+  _dupPendingAction = null;
+
+  closeDuplicateModal();
+  isAnimating = true;
+  stopAudio();
+
+  const card = document.querySelector('.card');
+  if (action === 'star') {
+    const starBtn = document.getElementById('btn-star');
+    if (starBtn) {
+      starBtn.classList.remove('burst');
+      void starBtn.offsetWidth;
+      starBtn.classList.add('burst');
+    }
+    launchFireworks();
+    if (card) card.classList.add('fly-up');
+    await sleep(410);
+  } else {
+    if (card) card.classList.add('fly-right');
+    await sleep(360);
+  }
+
+  setActionsVisible(false);
+  document.getElementById('deck').innerHTML = `<div class="state-screen"><div class="spinner"></div><p>Analyzing\u2026</p></div>`;
+
+  const endpoint = action === 'star' ? '/api/star' : '/api/accept';
+  try {
+    await api(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({
+        path:          savedCard.path,
+        choice:        savedCard.best || {},
+        overwrite:     mode === 'overwrite',
+        keep_existing: mode === 'keep_existing',
+      }),
+    });
+  } catch (e) { console.warn(e); }
+
+  isAnimating = false;
+  currentCard = null;
+  loadNext();
+}
+
+document.getElementById('btn-dup-modal-close').addEventListener('click', closeDuplicateModal);
+document.getElementById('btn-dup-cancel').addEventListener('click', closeDuplicateModal);
+document.getElementById('dup-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeDuplicateModal();
+});
+document.getElementById('btn-dup-keep-exist').addEventListener('click', () => _dupAction('keep_existing'));
+document.getElementById('btn-dup-overwrite').addEventListener('click',  () => _dupAction('overwrite'));
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 

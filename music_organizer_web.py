@@ -105,6 +105,15 @@ def _clean_empty_dirs(file_path: Path) -> None:
                         pass
 
 
+def _expected_dest(path: Path, choice: dict, out_dir: Path) -> Path:
+    """Return the primary destination path for *choice* without counter-increment."""
+    ext    = path.suffix.lower()
+    artist = sanitize(choice.get("artist", "") or "Unknown Artist")
+    album  = sanitize(choice.get("album",  "") or "Unknown Album")
+    title  = sanitize(choice.get("title",  "") or path.stem)
+    return out_dir / artist / album / f"{title}{ext}"
+
+
 def _all_audio_files() -> list[str]:
     src = Path(SOURCE_FOLDER)
     if not src.is_dir():
@@ -222,9 +231,11 @@ def api_next():
 @app.route("/api/accept", methods=["POST"])
 def api_accept():
     """Accept the best suggestion (or a custom one) and copy the file."""
-    data = request.get_json(force=True)
-    file_path = data.get("path", "")
-    choice    = data.get("choice", {})  # {title, artist, album}
+    data          = request.get_json(force=True)
+    file_path     = data.get("path",          "")
+    choice        = data.get("choice",        {})  # {title, artist, album}
+    overwrite     = bool(data.get("overwrite",     False))
+    keep_existing = bool(data.get("keep_existing", False))
 
     if not file_path:
         abort(400, "Missing path")
@@ -235,22 +246,30 @@ def api_accept():
 
     out_dir = Path(OUTPUT_FOLDER) if OUTPUT_FOLDER else path.parent
 
-    dest = organize_file(
-        path,
-        choice.get("artist", ""),
-        choice.get("album",  ""),
-        choice.get("title",  ""),
-        out_dir,
-        copy=True,  # always copy in web mode
-    )
-    write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
-    img_data, img_mime = fetch_cover_art_bytes(
-        mbid=choice.get("release_mbid", ""),
-        artist=choice.get("artist", ""),
-        album=choice.get("album", ""),
-    )
-    if img_data:
-        write_cover_art(dest, img_data, img_mime or "image/jpeg")
+    if keep_existing:
+        # User chose to keep the already-existing dest file; just mark as accepted.
+        dest = _expected_dest(path, choice, out_dir)
+    else:
+        if overwrite:
+            expected = _expected_dest(path, choice, out_dir)
+            if expected.is_file() and expected.resolve() != path.resolve():
+                expected.unlink()
+        dest = organize_file(
+            path,
+            choice.get("artist", ""),
+            choice.get("album",  ""),
+            choice.get("title",  ""),
+            out_dir,
+            copy=True,  # always copy in web mode
+        )
+        write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
+        img_data, img_mime = fetch_cover_art_bytes(
+            mbid=choice.get("release_mbid", ""),
+            artist=choice.get("artist", ""),
+            album=choice.get("album", ""),
+        )
+        if img_data:
+            write_cover_art(dest, img_data, img_mime or "image/jpeg")
 
     state = _load_state()
     accepted        = state.setdefault("accepted",        [])
@@ -277,9 +296,11 @@ def api_accept():
 @app.route("/api/star", methods=["POST"])
 def api_star():
     """Accept the track AND add it to the playlist JSON."""
-    data = request.get_json(force=True)
-    file_path = data.get("path", "")
-    choice    = data.get("choice", {})
+    data          = request.get_json(force=True)
+    file_path     = data.get("path",          "")
+    choice        = data.get("choice",        {})
+    overwrite     = bool(data.get("overwrite",     False))
+    keep_existing = bool(data.get("keep_existing", False))
 
     if not file_path:
         abort(400, "Missing path")
@@ -290,22 +311,29 @@ def api_star():
 
     out_dir = Path(OUTPUT_FOLDER) if OUTPUT_FOLDER else path.parent
 
-    dest = organize_file(
-        path,
-        choice.get("artist", ""),
-        choice.get("album",  ""),
-        choice.get("title",  ""),
-        out_dir,
-        copy=True,
-    )
-    write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
-    img_data, img_mime = fetch_cover_art_bytes(
-        mbid=choice.get("release_mbid", ""),
-        artist=choice.get("artist", ""),
-        album=choice.get("album", ""),
-    )
-    if img_data:
-        write_cover_art(dest, img_data, img_mime or "image/jpeg")
+    if keep_existing:
+        dest = _expected_dest(path, choice, out_dir)
+    else:
+        if overwrite:
+            expected = _expected_dest(path, choice, out_dir)
+            if expected.is_file() and expected.resolve() != path.resolve():
+                expected.unlink()
+        dest = organize_file(
+            path,
+            choice.get("artist", ""),
+            choice.get("album",  ""),
+            choice.get("title",  ""),
+            out_dir,
+            copy=True,
+        )
+        write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
+        img_data, img_mime = fetch_cover_art_bytes(
+            mbid=choice.get("release_mbid", ""),
+            artist=choice.get("artist", ""),
+            album=choice.get("album", ""),
+        )
+        if img_data:
+            write_cover_art(dest, img_data, img_mime or "image/jpeg")
 
     # Mark as accepted (same logic as api_accept)
     state = _load_state()
@@ -380,6 +408,51 @@ def api_audio():
     if not path.is_file():
         abort(404)
     return send_file(str(path))
+
+
+@app.route("/api/audio_dest")
+def api_audio_dest():
+    """Stream an audio file from OUTPUT_FOLDER (used by the duplicate modal)."""
+    file_path = request.args.get("path", "")
+    if not file_path:
+        abort(400)
+    if not OUTPUT_FOLDER:
+        abort(403)
+    path     = Path(file_path)
+    out_root = Path(OUTPUT_FOLDER).resolve()
+    try:
+        path.resolve().relative_to(out_root)
+    except ValueError:
+        abort(403)
+    if not path.is_file():
+        abort(404)
+    return send_file(str(path))
+
+
+@app.route("/api/check_duplicate", methods=["POST"])
+def api_check_duplicate():
+    """Check if the destination file already exists before accepting."""
+    data      = request.get_json(force=True)
+    file_path = data.get("path",   "")
+    choice    = data.get("choice", {})
+
+    if not file_path:
+        abort(400, "Missing path")
+
+    path = Path(file_path)
+    if not path.is_file():
+        abort(404, "File not found")
+
+    out_dir = Path(OUTPUT_FOLDER) if OUTPUT_FOLDER else path.parent
+    dest    = _expected_dest(path, choice, out_dir)
+
+    if dest.exists() and dest.resolve() != path.resolve():
+        src_size_kb  = round(path.stat().st_size / 1024, 1)
+        dest_size_kb = round(dest.stat().st_size / 1024, 1)
+        return jsonify({"exists": True, "dest": str(dest),
+                        "dest_size_kb": dest_size_kb, "src_size_kb": src_size_kb})
+
+    return jsonify({"exists": False})
 
 
 @app.route("/api/reset_skipped", methods=["POST"])
