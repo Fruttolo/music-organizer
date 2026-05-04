@@ -40,6 +40,11 @@ API_KEY       = ACOUSTID_API_KEY
 # State file: tracks which files have been accepted/skipped
 STATE_FILE = Path(SOURCE_FOLDER) / ".music_organizer_state.json" if SOURCE_FOLDER else Path(".music_organizer_state.json")
 
+
+def _playlist_file() -> Path:
+    base = Path(OUTPUT_FOLDER) if OUTPUT_FOLDER else (Path(SOURCE_FOLDER) if SOURCE_FOLDER else Path("."))
+    return base / "playlist.json"
+
 # In-memory fingerprint cache to avoid re-fingerprinting already looked-up files
 _fingerprint_cache: dict = {}  # path -> {"existing": ..., "candidates": [...]}
 _cache_lock = threading.Lock()
@@ -57,6 +62,22 @@ def _load_state() -> dict:
 
 def _save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), "utf-8")
+
+
+def _load_playlist() -> list:
+    pf = _playlist_file()
+    if pf.exists():
+        try:
+            return json.loads(pf.read_text("utf-8"))
+        except Exception:
+            pass
+    return []
+
+
+def _save_playlist(playlist: list) -> None:
+    pf = _playlist_file()
+    pf.parent.mkdir(parents=True, exist_ok=True)
+    pf.write_text(json.dumps(playlist, indent=2, ensure_ascii=False), "utf-8")
 
 
 def _all_audio_files() -> list[str]:
@@ -88,6 +109,7 @@ def api_status():
         "accepted": len(accepted),
         "skipped":  len(skipped),
         "pending":  len(pending),
+        "playlist": len(_load_playlist()),
         "source":   SOURCE_FOLDER,
         "output":   OUTPUT_FOLDER,
     })
@@ -209,6 +231,63 @@ def api_accept():
     _trigger_prefetch()
 
     return jsonify({"ok": True, "dest": str(dest)})
+
+
+@app.route("/api/star", methods=["POST"])
+def api_star():
+    """Accept the track AND add it to the playlist JSON."""
+    data = request.get_json(force=True)
+    file_path = data.get("path", "")
+    choice    = data.get("choice", {})
+
+    if not file_path:
+        abort(400, "Missing path")
+
+    path = Path(file_path)
+    if not path.is_file():
+        abort(404, "File not found")
+
+    out_dir = Path(OUTPUT_FOLDER) if OUTPUT_FOLDER else path.parent
+
+    dest = organize_file(
+        path,
+        choice.get("artist", ""),
+        choice.get("album",  ""),
+        choice.get("title",  ""),
+        out_dir,
+        copy=True,
+    )
+
+    # Mark as accepted (same logic as api_accept)
+    state = _load_state()
+    accepted        = state.setdefault("accepted",        [])
+    skipped         = state.setdefault("skipped",         [])
+    skipped_offsets = state.setdefault("skipped_offsets", {})
+
+    if file_path not in accepted:
+        accepted.append(file_path)
+    if file_path in skipped:
+        skipped.remove(file_path)
+    skipped_offsets.pop(file_path, None)
+
+    _save_state(state)
+
+    # Append to playlist
+    playlist = _load_playlist()
+    playlist.append({
+        "title":  choice.get("title",  "") or path.stem,
+        "artist": choice.get("artist", ""),
+        "album":  choice.get("album",  ""),
+        "source": file_path,
+        "dest":   str(dest),
+    })
+    _save_playlist(playlist)
+
+    with _cache_lock:
+        _fingerprint_cache.pop(file_path, None)
+    _trigger_prefetch()
+
+    return jsonify({"ok": True, "dest": str(dest), "playlist_size": len(playlist)})
 
 
 @app.route("/api/skip", methods=["POST"])

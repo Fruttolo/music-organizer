@@ -16,6 +16,7 @@
     --accent:    #6c63ff;
     --accept:    #22c55e;
     --skip:      #ef4444;
+    --star:      #f59e0b;
     --text:      #e4e6f0;
     --muted:     #7a8099;
     --radius:    18px;
@@ -132,6 +133,7 @@
   }
   .card .lbl-accept { left: 20px;  color: var(--accept); border-color: var(--accept); transform: rotate(-15deg); }
   .card .lbl-skip   { right: 20px; color: var(--skip);   border-color: var(--skip);   transform: rotate(15deg); }
+  .card .lbl-star   { left: 50%; top: 22px; transform: translateX(-50%) rotate(0deg); color: var(--star); border-color: var(--star); }
 
   /* ── File name row ────────────────────────────────────────────────── */
   .card-filename {
@@ -410,6 +412,7 @@
 
   .btn-skip   { background: #1f1215; color: var(--skip);   border: 2px solid var(--skip); }
   .btn-accept { background: #0f1f15; color: var(--accept); border: 2px solid var(--accept); }
+  .btn-star   { background: #1f1708; color: var(--star);   border: 2px solid var(--star); font-size: 1.5rem; }
   .btn-reset  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); font-size: .95rem; width: auto; border-radius: 8px; padding: 0 16px; font-size: .82rem; }
 
   /* ── Empty / loading states ───────────────────────────────────────── */
@@ -444,8 +447,20 @@
   @keyframes flyLeft {
     to { transform: translateX(-120vw) rotate(-25deg); opacity: 0; }
   }
+  @keyframes flyUp {
+    to { transform: translateY(-120vh) scale(.8); opacity: 0; }
+  }
   .fly-right { animation: flyRight .35s ease-in forwards; }
   .fly-left  { animation: flyLeft  .35s ease-in forwards; }
+  .fly-up    { animation: flyUp    .4s  ease-in forwards; }
+
+  /* star burst on the button */
+  @keyframes starPop {
+    0%   { transform: scale(1); box-shadow: 0 4px 16px #0004; }
+    40%  { transform: scale(1.35); box-shadow: 0 0 28px 6px #f59e0b66; }
+    100% { transform: scale(1); box-shadow: 0 4px 16px #0004; }
+  }
+  .btn-star.burst { animation: starPop .45s ease; }
 
   /* keyboard hints */
   .hints {
@@ -596,6 +611,7 @@
     <span class="stat-chip">✅ <span class="val" id="s-accepted">–</span></span>
     <span class="stat-chip">⏩ <span class="val" id="s-skipped">–</span></span>
     <span class="stat-chip">⏳ <span class="val" id="s-pending">–</span></span>
+    <span class="stat-chip">⭐ <span class="val" id="s-playlist">–</span></span>
   </div>
 </header>
 
@@ -616,11 +632,13 @@
   <button class="btn-action btn-skip"   id="btn-skip"   title="Skip (←)">✕</button>
   <button class="btn-action btn-reset"  id="btn-reset-skipped" title="Re-queue all skipped">↺ skipped</button>
   <button class="btn-action btn-accept" id="btn-accept" title="Accept (→)">✓</button>
+  <button class="btn-action btn-star"   id="btn-star"   title="Add to playlist (↑)">⭐</button>
 </div>
 
 <div class="hints" id="hints" style="visibility:hidden">
   <span><kbd>←</kbd> skip</span>
   <span><kbd>→</kbd> accept</span>
+  <span><kbd>↑</kbd> playlist</span>
   <span><kbd>Space</kbd> play/pause</span>
 </div>
 
@@ -671,6 +689,7 @@ async function refreshStats() {
     document.getElementById('s-accepted').textContent = s.accepted;
     document.getElementById('s-skipped').textContent  = s.skipped;
     document.getElementById('s-pending').textContent  = s.pending;
+    document.getElementById('s-playlist').textContent = s.playlist ?? 0;
 
     const done = s.accepted;
     const total = s.total;
@@ -914,6 +933,35 @@ async function doSkip() {
   loadNext();
 }
 
+async function doStar() {
+  if (!currentCard || isAnimating) return;
+  isAnimating = true;
+  stopAudio();
+
+  // burst animation on the button
+  const starBtn = document.getElementById('btn-star');
+  if (starBtn) {
+    starBtn.classList.remove('burst');
+    void starBtn.offsetWidth; // reflow to restart animation
+    starBtn.classList.add('burst');
+  }
+
+  const card = document.querySelector('.card');
+  if (card) card.classList.add('fly-up');
+
+  try {
+    await api('/api/star', {
+      method: 'POST',
+      body: JSON.stringify({ path: currentCard.path, choice: currentCard.best || {} }),
+    });
+  } catch (e) { console.warn(e); }
+
+  await sleep(410);
+  isAnimating = false;
+  currentCard = null;
+  loadNext();
+}
+
 // ── Swipe gesture ──────────────────────────────────────────────────────────
 
 function attachSwipe(card) {
@@ -1005,6 +1053,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.key === 'ArrowRight') { e.preventDefault(); doAccept(); }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); doSkip(); }
+  if (e.key === 'ArrowUp')    { e.preventDefault(); doStar(); }
   if (e.key === ' ')          { e.preventDefault(); spaceToggle(); }
 });
 
@@ -1023,6 +1072,7 @@ document.getElementById('btn-reset-skipped').addEventListener('click', async () 
 
 document.getElementById('btn-accept').addEventListener('click', doAccept);
 document.getElementById('btn-skip').addEventListener('click', doSkip);
+document.getElementById('btn-star').addEventListener('click', doStar);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
