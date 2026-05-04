@@ -212,6 +212,24 @@
   .badge-existing { background: #78350f33; color: #fcd34d; border: 1px solid #78350f66; }
   .badge-none     { background: #7f1d1d33; color: #fca5a5; border: 1px solid #7f1d1d66; }
 
+  /* ── Google search button in card top ────────────────────────────────── */
+  .btn-google-search {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    color: var(--muted);
+    font-size: .72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    transition: border-color .15s, color .15s;
+    line-height: 1.4;
+  }
+  .btn-google-search:hover { border-color: #4285f4; color: #93c5fd; }
+
   /* ── Existing tags comparison ─────────────────────────────────────── */
   .tags-section {
     background: var(--surface2);
@@ -1324,6 +1342,18 @@ function buildCard(data) {
   const propTitle  = best.title  || ex.title  || data.filename;
   const propArtist = best.artist || ex.artist || '—';
   const propAlbum  = best.album  || ex.album  || '—';
+
+  const googleBtn = document.createElement('button');
+  googleBtn.className = 'btn-google-search';
+  googleBtn.title = 'Cerca su Google';
+  googleBtn.innerHTML = '🔎 Cerca su Google';
+  googleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const parts = [propTitle, propArtist].filter(s => s && s !== '—');
+    const q = encodeURIComponent(parts.join(' '));
+    window.open('https://www.google.com/search?q=' + q, '_blank', 'noopener,noreferrer');
+  });
+  topMeta.appendChild(googleBtn);
 
   const compare = document.createElement('div');
   compare.className = 'tags-compare';
