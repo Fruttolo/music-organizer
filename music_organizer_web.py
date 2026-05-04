@@ -625,6 +625,64 @@ def api_cover_art():
     return jsonify({"url": cover_url, "mbid": mbid})
 
 
+@app.route("/api/search_cover_art")
+def api_search_cover_art():
+    """Return multiple cover art options for the given artist/album/title."""
+    artist = request.args.get("artist", "").strip()
+    album  = request.args.get("album",  "").strip()
+    title  = request.args.get("title",  "").strip()
+
+    parts = []
+    if artist:
+        parts.append(f'artist:"{artist}"')
+    if album:
+        parts.append(f'release:"{album}"')
+    elif title:
+        parts.append(f'release:"{title}"')
+    if not parts:
+        return jsonify({"results": []})
+
+    query = " AND ".join(parts)
+    url = "https://musicbrainz.org/ws/2/release/?" + urllib.parse.urlencode({
+        "query": query,
+        "fmt":   "json",
+        "limit": "12",
+    })
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return jsonify({"results": []})
+
+    results = []
+    seen_mbids = set()
+    for release in result.get("releases", []):
+        mbid = release.get("id", "")
+        if not mbid or not _MBID_RE.match(mbid) or mbid in seen_mbids:
+            continue
+        seen_mbids.add(mbid)
+        release_artist = ""
+        credits = release.get("artist-credit", [])
+        if credits:
+            release_artist = credits[0].get("artist", {}).get("name", "")
+        release_title = release.get("title", "")
+        year = ""
+        date = release.get("date", "")
+        if date:
+            year = date[:4]
+        results.append({
+            "mbid":   mbid,
+            "artist": release_artist,
+            "album":  release_title,
+            "year":   year,
+            "url":    f"https://coverartarchive.org/release/{mbid}/front/250",
+        })
+    return jsonify({"results": results})
+
+
 # ─── Pre-fetch next card in background ────────────────────────────────────────
 
 def _prefetch_next(exclude: str | None = None):

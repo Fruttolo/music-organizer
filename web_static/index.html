@@ -506,6 +506,128 @@
     align-self: flex-start;
   }
 
+  /* ── Art wrapper + search overlay button ───────────────────────────── */
+  .art-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .art-search-btn {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    background: #0007;
+    backdrop-filter: blur(4px);
+    border: none;
+    border-radius: 4px;
+    color: #ffffffaa;
+    font-size: .55rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.45;
+    transition: opacity .15s;
+    z-index: 5;
+    padding: 0;
+  }
+  .art-search-btn:hover { opacity: 1; }
+
+  /* ── Cover art picker modal ───────────────────────────────────────────── */
+  .cover-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .cover-modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cover-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px 18px;
+    width: min(500px, 96vw);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 48px #0009;
+    max-height: 85svh;
+    overflow: hidden;
+  }
+  .cover-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cover-modal-header h3 { font-size: 1rem; font-weight: 700; }
+  .btn-cover-modal-cancel {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 7px;
+    border-radius: 6px;
+    transition: color .15s;
+    line-height: 1;
+  }
+  .btn-cover-modal-cancel:hover { color: var(--text); }
+  .cover-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+    overflow-y: auto;
+    padding-right: 4px;
+    max-height: calc(85svh - 80px);
+  }
+  .cover-result-item {
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .12s;
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--surface2);
+  }
+  .cover-result-item:hover { border-color: var(--accent); transform: scale(1.04); }
+  .cover-result-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cover-result-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #000b;
+    font-size: .62rem;
+    color: #fff;
+    padding: 4px 6px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  .cover-result-err {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-size: 1.6rem;
+  }
+
   /* ── Manual search button (in proposed col header) ────────────────── */
   .btn-manual-search {
     background: none;
@@ -683,6 +805,17 @@
 </div>
 
 
+<!-- ── Cover art picker modal ─────────────────────────────────────────────── -->
+<div class="cover-modal-overlay" id="cover-modal-overlay">
+  <div class="cover-modal">
+    <div class="cover-modal-header">
+      <h3>🖼 Scegli copertina</h3>
+      <button class="btn-cover-modal-cancel" id="btn-cover-modal-cancel">✕</button>
+    </div>
+    <div class="cover-results" id="cover-results"></div>
+  </div>
+</div>
+
 <!-- ── Manual search modal ─────────────────────────────────────────────── -->
 <div class="search-modal-overlay" id="search-modal-overlay">
   <div class="search-modal">
@@ -764,10 +897,22 @@ function buildCard(data) {
   const topRow = document.createElement('div');
   topRow.className = 'card-top-row';
 
+  const artWrap = document.createElement('div');
+  artWrap.className = 'art-wrap';
+
   const art = document.createElement('div');
   art.className = 'art';
   art.innerHTML = '<div class="art-spinner"><div class="spinner"></div></div>';
-  topRow.appendChild(art);
+  artWrap.appendChild(art);
+
+  const artSearchBtn = document.createElement('button');
+  artSearchBtn.className = 'art-search-btn';
+  artSearchBtn.title = 'Cerca copertina';
+  artSearchBtn.textContent = '🔍';
+  artSearchBtn.addEventListener('click', (e) => { e.stopPropagation(); openCoverArtPicker(); });
+  artWrap.appendChild(artSearchBtn);
+
+  topRow.appendChild(artWrap);
 
   const topMeta = document.createElement('div');
   topMeta.className = 'card-top-meta';
@@ -1369,6 +1514,87 @@ async function fetchCoverArt(artEl, artist, album, mbid) {
     artEl.textContent = '🎵';
   }
 }
+
+// ── Cover art picker ──────────────────────────────────────────────────────────
+
+function openCoverArtPicker() {
+  if (!currentCard) return;
+  const best = currentCard.best || {};
+  const ex   = currentCard.existing || {};
+  const artist = best.artist || ex.artist || '';
+  const album  = best.album  || ex.album  || '';
+  const title  = best.title  || ex.title  || '';
+
+  const container = document.getElementById('cover-results');
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:24px"><div class="spinner" style="margin:0 auto 8px"></div><div style="color:var(--muted);font-size:.82rem">Cerco copertine…</div></div>';
+  document.getElementById('cover-modal-overlay').classList.add('open');
+
+  const params = new URLSearchParams();
+  if (artist) params.set('artist', artist);
+  if (album)  params.set('album',  album);
+  if (title)  params.set('title',  title);
+  api('/api/search_cover_art?' + params.toString())
+    .then(data => renderCoverArtOptions(data.results || []))
+    .catch(e => {
+      container.innerHTML = `<div style="grid-column:1/-1;color:var(--skip);padding:8px">Errore: ${esc(String(e))}</div>`;
+    });
+}
+
+function closeCoverArtPicker() {
+  document.getElementById('cover-modal-overlay').classList.remove('open');
+}
+
+function renderCoverArtOptions(results) {
+  const container = document.getElementById('cover-results');
+  if (!results.length) {
+    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:24px">Nessuna copertina trovata.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  for (const r of results) {
+    const item = document.createElement('div');
+    item.className = 'cover-result-item';
+    const year = r.year ? ` · ${r.year}` : '';
+    item.innerHTML = `
+      <img src="${esc(r.url)}" alt="${esc(r.album)}" loading="lazy" />
+      <div class="cover-result-err" style="display:none">🎵</div>
+      <div class="cover-result-label">${esc(r.album || r.artist || '—')}${esc(year)}</div>
+    `;
+    item.querySelector('img').addEventListener('error', function() {
+      this.style.display = 'none';
+      item.querySelector('.cover-result-err').style.display = 'flex';
+    });
+    item.addEventListener('click', () => applySelectedCoverArt(r));
+    container.appendChild(item);
+  }
+}
+
+function applySelectedCoverArt(result) {
+  const card = document.querySelector('.card');
+  if (card) {
+    const artEl = card.querySelector('.art');
+    if (artEl) {
+      artEl.innerHTML = '<div class="art-spinner"><div class="spinner"></div></div>';
+      const img = document.createElement('img');
+      img.alt = 'cover';
+      img.onerror = () => { artEl.textContent = '🎵'; };
+      img.onload  = () => { artEl.innerHTML = ''; artEl.appendChild(img); };
+      img.src = result.url;
+    }
+  }
+  if (currentCard) {
+    if (!currentCard.best) currentCard.best = {};
+    currentCard.best.release_mbid = result.mbid;
+    if (result.artist && !currentCard.best.artist) currentCard.best.artist = result.artist;
+    if (result.album  && !currentCard.best.album)  currentCard.best.album  = result.album;
+  }
+  closeCoverArtPicker();
+}
+
+document.getElementById('btn-cover-modal-cancel').addEventListener('click', closeCoverArtPicker);
+document.getElementById('cover-modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeCoverArtPicker();
+});
 
 // Wire modal buttons
 document.getElementById('btn-modal-cancel').addEventListener('click', closeSearchModal);
