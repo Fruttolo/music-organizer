@@ -153,6 +153,28 @@
     justify-content: center;
     font-size: 2.4rem;
     flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12px;
+    display: block;
+  }
+  .art .art-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+    border-radius: 12px;
+  }
+  .art .art-spinner .spinner {
+    width: 20px; height: 20px;
+    border-width: 2px;
   }
 
   .card-head { display: flex; gap: 14px; align-items: flex-start; }
@@ -518,47 +540,47 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    width: min(400px, 92vw);
+    padding: 28px 26px 24px;
+    width: min(440px, 94vw);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 20px;
     box-shadow: 0 16px 48px #0009;
   }
-  .search-modal h3 { font-size: 1rem; font-weight: 700; }
+  .search-modal h3 { font-size: 1.05rem; font-weight: 700; }
   .search-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 7px;
   }
   .search-field label {
-    font-size: .7rem;
+    font-size: .72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .8px;
+    letter-spacing: .9px;
     color: var(--muted);
   }
   .search-field input {
     background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 12px;
+    border-radius: 10px;
+    padding: 11px 14px;
     color: var(--text);
-    font-size: .9rem;
+    font-size: .95rem;
     font-family: inherit;
     outline: none;
     transition: border-color .15s;
   }
   .search-field input:focus { border-color: var(--accent); }
-  .search-modal-actions { display: flex; gap: 8px; }
+  .search-modal-actions { display: flex; gap: 10px; }
   .btn-modal-search {
     flex: 1;
     background: var(--accent);
     border: none;
-    border-radius: 8px;
-    padding: 9px 16px;
+    border-radius: 10px;
+    padding: 11px 18px;
     color: #fff;
-    font-size: .88rem;
+    font-size: .92rem;
     font-weight: 600;
     cursor: pointer;
     transition: background .15s;
@@ -567,10 +589,10 @@
   .btn-modal-cancel {
     background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 9px 16px;
+    border-radius: 10px;
+    padding: 11px 18px;
     color: var(--muted);
-    font-size: .88rem;
+    font-size: .92rem;
     cursor: pointer;
     transition: background .15s;
   }
@@ -578,22 +600,51 @@
   .search-results {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 260px;
+    gap: 8px;
+    max-height: 280px;
     overflow-y: auto;
   }
   .search-result-item {
     background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: 10px;
+    padding: 12px 15px;
     cursor: pointer;
     transition: border-color .15s, background .15s;
   }
   .search-result-item:hover { border-color: var(--accent); background: #1a1c2e; }
-  .search-result-title { font-size: .88rem; font-weight: 600; }
-  .search-result-sub   { font-size: .75rem; color: var(--muted); margin-top: 2px; }
-  .search-result-score { font-size: .68rem; color: #93c5fd; margin-top: 2px; }
+  .search-result-title { font-size: .92rem; font-weight: 600; }
+  .search-result-sub   { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+  .search-result-score { font-size: .7rem; color: #93c5fd; margin-top: 3px; }
+
+  /* ── Search wizard: step 2 ───────────────────────────────────────── */
+  .btn-modal-back {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: .85rem;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .btn-modal-back:hover { text-decoration: underline; }
+
+  .search-step2-info {
+    font-size: .82rem;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-step2-lbl {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .9px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
 </style>
 </head>
 <body>
@@ -629,30 +680,34 @@
   <button class="btn-action btn-star"   id="btn-star"   title="Add to playlist (↑)">⭐</button>
 </div>
 
-<div class="hints" id="hints" style="visibility:hidden">
-  <span><kbd>←</kbd> skip</span>
-  <span><kbd>→</kbd> accept</span>
-  <span><kbd>↑</kbd> playlist</span>
-  <span><kbd>Space</kbd> play/pause</span>
-</div>
 
 <!-- ── Manual search modal ─────────────────────────────────────────────── -->
 <div class="search-modal-overlay" id="search-modal-overlay">
   <div class="search-modal">
-    <h3>🔍 Ricerca manuale</h3>
-    <div class="search-field">
-      <label>Titolo</label>
-      <input type="text" id="search-input-title" placeholder="es. Bohemian Rhapsody" />
+    <h3 id="search-modal-title">🔍 Ricerca manuale</h3>
+
+    <!-- Step 1: inserisci titolo → scegli artista -->
+    <div id="search-step-1">
+      <div class="search-field">
+        <label>Titolo del brano</label>
+        <input type="text" id="search-input-title" placeholder="es. It's My Life" />
+      </div>
+      <div class="search-modal-actions">
+        <button class="btn-modal-cancel" id="btn-modal-cancel">Annulla</button>
+        <button class="btn-modal-search" id="btn-search-artists">Cerca artisti</button>
+      </div>
+      <div class="search-results" id="search-artists-list"></div>
     </div>
-    <div class="search-field">
-      <label>Artista</label>
-      <input type="text" id="search-input-artist" placeholder="es. Queen" />
+
+    <!-- Step 2: scegli album (nascosto finché non si sceglie l'artista) -->
+    <div id="search-step-2" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn-modal-back" id="btn-back-artists">← Cambia artista</button>
+        <span class="search-step2-info" id="search-step2-info"></span>
+      </div>
+      <div class="search-step2-lbl">Scegli l'album</div>
+      <div class="search-results" id="search-albums-list"></div>
     </div>
-    <div class="search-modal-actions">
-      <button class="btn-modal-cancel" id="btn-modal-cancel">Annulla</button>
-      <button class="btn-modal-search" id="btn-modal-search">Cerca</button>
-    </div>
-    <div class="search-results" id="search-results-list"></div>
   </div>
 </div>
 
@@ -708,13 +763,16 @@ function buildCard(data) {
 
   const art = document.createElement('div');
   art.className = 'art';
-  art.textContent = '🎵';
+  art.innerHTML = '<div class="art-spinner"><div class="spinner"></div></div>';
   topRow.appendChild(art);
 
   const topMeta = document.createElement('div');
   topMeta.className = 'card-top-meta';
 
   const best = data.best || {};
+
+  // Async cover art fetch (non-blocking)
+  fetchCoverArt(art, best.artist || '', best.album || '', best.release_mbid || '');
   let badgeHtml = '';
   if (best.score != null) {
     const pct = Math.round(best.score * 100);
@@ -746,12 +804,21 @@ function buildCard(data) {
   // Original column
   const colOrig = document.createElement('div');
   colOrig.className = 'tags-col tags-col-orig';
-  colOrig.innerHTML = `
-    <div class="col-header">Originali</div>
-    <div class="tag-row"><span class="k">Title</span><span class="v" title="${esc(ex.title||'—')}">${esc(ex.title||'—')}</span></div>
-    <div class="tag-row"><span class="k">Artist</span><span class="v" title="${esc(ex.artist||'—')}">${esc(ex.artist||'—')}</span></div>
-    <div class="tag-row"><span class="k">Album</span><span class="v" title="${esc(ex.album||'—')}">${esc(ex.album||'—')}</span></div>
-  `;
+  const origHeader = document.createElement('div');
+  origHeader.className = 'col-header';
+  origHeader.textContent = 'Originali';
+  colOrig.appendChild(origHeader);
+
+  for (const [k, v] of [['Title', ex.title||'—'], ['Artist', ex.artist||'—'], ['Album', ex.album||'—']]) {
+    const row = document.createElement('div');
+    row.className = 'tag-row';
+    row.innerHTML = `<span class="k">${k}</span><span class="v" title="${esc(v)}">${esc(v)}</span><button class="copy-btn" title="Copia ${k}">${copyIcon()}</button>`;
+    row.querySelector('.copy-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyText(v, e.currentTarget);
+    });
+    colOrig.appendChild(row);
+  }
   compare.appendChild(colOrig);
 
   // Proposed column (with copy buttons)
@@ -783,7 +850,11 @@ function buildCard(data) {
   // ── Original path ───────────────────────────────────────────────────
   const pathFrom = document.createElement('div');
   pathFrom.className = 'path-row path-original';
-  pathFrom.innerHTML = `<span class="path-lbl">Da</span><span class="path-val" title="${esc(data.path)}">${esc(data.path)}</span>`;
+  pathFrom.innerHTML = `<span class="path-lbl">Da</span><span class="path-val" title="${esc(data.path)}">${esc(data.path)}</span><button class="copy-btn" title="Copia path originale">${copyIcon()}</button>`;
+  pathFrom.querySelector('.copy-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyText(data.path, e.currentTarget);
+  });
   card.appendChild(pathFrom);
 
   // ── Proposed path ───────────────────────────────────────────────────
@@ -863,7 +934,6 @@ async function loadNext() {
           <p>Every track has been reviewed. You can reset skipped songs to review them again.</p>
         </div>`;
       setActionsVisible(false);
-      document.getElementById('hints').style.visibility = 'hidden';
       document.getElementById('btn-reset-skipped').style.display = 'flex';
       refreshStats();
       return;
@@ -873,7 +943,6 @@ async function loadNext() {
     const card = buildCard(data);
     deck.appendChild(card);
     setActionsVisible(true);
-    document.getElementById('hints').style.visibility = 'visible';
 
     // auto-play
     playAudio(data.path);
@@ -1084,7 +1153,18 @@ function copyIcon() {
 
 async function copyText(text, btn) {
   try {
-    await navigator.clipboard.writeText(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 1500);
   } catch (e) {
@@ -1103,17 +1183,20 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function setActionsVisible(v) {
   document.getElementById('actions').style.visibility = v ? 'visible' : 'hidden';
-  document.getElementById('hints').style.visibility   = v ? 'visible' : 'hidden';
 }
 
-// ── Manual search modal ────────────────────────────────────────────────────
+// ── Manual search modal (wizard: titolo → artista → album) ────────────────
+
+let _searchTitle = '';
 
 function openSearchModal() {
   if (!currentCard) return;
-  const best = currentCard.best || {};
-  document.getElementById('search-input-title').value  = best.title  || '';
-  document.getElementById('search-input-artist').value = best.artist || '';
-  document.getElementById('search-results-list').innerHTML = '';
+  _searchTitle = '';
+  document.getElementById('search-input-title').value = '';
+  document.getElementById('search-artists-list').innerHTML = '';
+  document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
+  document.getElementById('search-step-1').style.display = '';
+  document.getElementById('search-step-2').style.display = 'none';
   document.getElementById('search-modal-overlay').classList.add('open');
   document.getElementById('search-input-title').focus();
 }
@@ -1122,44 +1205,88 @@ function closeSearchModal() {
   document.getElementById('search-modal-overlay').classList.remove('open');
 }
 
-async function doManualSearch() {
-  const title  = document.getElementById('search-input-title').value.trim();
-  const artist = document.getElementById('search-input-artist').value.trim();
-  if (!title && !artist) return;
+// Step 1: cerca artisti per titolo
+async function doSearchArtists() {
+  const title = document.getElementById('search-input-title').value.trim();
+  if (!title) return;
+  _searchTitle = title;
 
-  const resList = document.getElementById('search-results-list');
+  const resList = document.getElementById('search-artists-list');
   resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Ricerca in corso…</div>';
 
   try {
-    const data = await api('/api/search_by_text', {
+    const data = await api('/api/search_artists', {
       method: 'POST',
-      body: JSON.stringify({ title, artist }),
+      body: JSON.stringify({ title }),
     });
-    renderSearchResults(data.candidates || []);
+    renderArtistResults(data.artists || []);
   } catch (e) {
     resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
   }
 }
 
-function renderSearchResults(candidates) {
-  const resList = document.getElementById('search-results-list');
-  if (!candidates.length) {
-    resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Nessun risultato trovato.</div>';
+function renderArtistResults(artists) {
+  const resList = document.getElementById('search-artists-list');
+  if (!artists.length) {
+    resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Nessun artista trovato.</div>';
     return;
   }
   resList.innerHTML = '';
-  for (const c of candidates) {
+  for (const a of artists) {
     const item = document.createElement('div');
     item.className = 'search-result-item';
-    const pct = c.score != null ? Math.round(c.score * 100) + '%' : '—';
-    item.innerHTML = `
-      <div class="search-result-title">${esc(c.title || '—')}</div>
-      <div class="search-result-sub">${esc(c.artist || '—')}${c.album ? ' · ' + esc(c.album) : ''}</div>
-      <div class="search-result-score">Match: ${pct}</div>
-    `;
-    item.addEventListener('click', () => applySearchResult(c));
+    item.innerHTML = `<div class="search-result-title">${esc(a.name)}</div>`;
+    item.addEventListener('click', () => selectArtist(a));
     resList.appendChild(item);
   }
+}
+
+// Step 2: seleziona artista → carica album
+async function selectArtist(artist) {
+  document.getElementById('search-step-1').style.display = 'none';
+  document.getElementById('search-modal-title').textContent = '🎵 Scegli l\'album';
+  document.getElementById('search-step2-info').textContent = `${artist.name}  —  "${_searchTitle}"`;
+  document.getElementById('search-step-2').style.display = '';
+
+  const resList = document.getElementById('search-albums-list');
+  resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Carico album…</div>';
+
+  try {
+    const data = await api('/api/search_albums', {
+      method: 'POST',
+      body: JSON.stringify({ title: _searchTitle, artist: artist.name }),
+    });
+    renderAlbumResults(data.albums || [], artist.name);
+  } catch (e) {
+    resList.innerHTML = `<div style="color:var(--skip);font-size:.82rem;padding:4px">Errore: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderAlbumResults(albums, artistName) {
+  const resList = document.getElementById('search-albums-list');
+  if (!albums.length) {
+    resList.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:8px">Nessun album trovato.</div>';
+    return;
+  }
+  resList.innerHTML = '';
+  for (const a of albums) {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    const yearStr = a.year  ? ` (${a.year})` : '';
+    const typeStr = a.primary_type ? ` · ${a.primary_type}` : '';
+    item.innerHTML = `
+      <div class="search-result-title">${esc(a.album || '—')}</div>
+      <div class="search-result-sub">${esc(artistName)}${yearStr}${typeStr}</div>
+    `;
+    item.addEventListener('click', () => applySearchResult(a));
+    resList.appendChild(item);
+  }
+}
+
+function backToArtists() {
+  document.getElementById('search-step-2').style.display = 'none';
+  document.getElementById('search-modal-title').textContent = '🔍 Ricerca manuale';
+  document.getElementById('search-step-1').style.display = '';
 }
 
 function applySearchResult(candidate) {
@@ -1189,19 +1316,53 @@ function applySearchResult(candidate) {
       pathVal.textContent = preview;
       pathVal.title = preview;
     }
+    // Refresh cover art with new tags
+    const artEl = card.querySelector('.art');
+    if (artEl) {
+      artEl.innerHTML = '<div class="art-spinner"><div class="spinner"></div></div>';
+      fetchCoverArt(artEl, candidate.artist || '', candidate.album || '', candidate.release_mbid || '');
+    }
   }
 
   closeSearchModal();
 }
 
+// ── Cover art fetch ────────────────────────────────────────────────────────────────────
+
+async function fetchCoverArt(artEl, artist, album, mbid) {
+  if (!artEl) return;
+  const params = new URLSearchParams();
+  if (mbid)   params.set('mbid',   mbid);
+  if (artist) params.set('artist', artist);
+  if (album)  params.set('album',  album);
+  if (!params.toString()) {
+    artEl.textContent = '🎵';
+    return;
+  }
+  try {
+    const data = await api('/api/cover_art?' + params.toString());
+    if (data.url) {
+      const img = document.createElement('img');
+      img.alt = 'cover';
+      img.onerror = () => { artEl.textContent = '🎵'; };
+      img.onload  = () => { artEl.innerHTML = ''; artEl.appendChild(img); };
+      img.src = data.url;
+    } else {
+      artEl.textContent = '🎵';
+    }
+  } catch (e) {
+    artEl.textContent = '🎵';
+  }
+}
+
 // Wire modal buttons
 document.getElementById('btn-modal-cancel').addEventListener('click', closeSearchModal);
-document.getElementById('btn-modal-search').addEventListener('click', doManualSearch);
+document.getElementById('btn-search-artists').addEventListener('click', doSearchArtists);
+document.getElementById('btn-back-artists').addEventListener('click', backToArtists);
 document.getElementById('search-modal-overlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeSearchModal();
 });
-document.getElementById('search-input-title').addEventListener('keydown',  (e) => { if (e.key === 'Enter') doManualSearch(); });
-document.getElementById('search-input-artist').addEventListener('keydown', (e) => { if (e.key === 'Enter') doManualSearch(); });
+document.getElementById('search-input-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearchArtists(); });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 

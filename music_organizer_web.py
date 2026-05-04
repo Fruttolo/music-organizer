@@ -5,6 +5,7 @@
 import json
 import os
 import random
+import re
 import shutil
 import threading
 import urllib.parse
@@ -27,6 +28,8 @@ from music_organizer import (
     organize_file,
     sanitize,
     write_tags,
+    write_cover_art,
+    fetch_cover_art_bytes,
     ACOUSTID_API_KEY,
 )
 
@@ -213,6 +216,13 @@ def api_accept():
         copy=True,  # always copy in web mode
     )
     write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
+    img_data, img_mime = fetch_cover_art_bytes(
+        mbid=choice.get("release_mbid", ""),
+        artist=choice.get("artist", ""),
+        album=choice.get("album", ""),
+    )
+    if img_data:
+        write_cover_art(dest, img_data, img_mime or "image/jpeg")
 
     state = _load_state()
     accepted        = state.setdefault("accepted",        [])
@@ -260,6 +270,13 @@ def api_star():
         copy=True,
     )
     write_tags(dest, choice.get("title", ""), choice.get("artist", ""), choice.get("album", ""))
+    img_data, img_mime = fetch_cover_art_bytes(
+        mbid=choice.get("release_mbid", ""),
+        artist=choice.get("artist", ""),
+        album=choice.get("album", ""),
+    )
+    if img_data:
+        write_cover_art(dest, img_data, img_mime or "image/jpeg")
 
     # Mark as accepted (same logic as api_accept)
     state = _load_state()
@@ -397,9 +414,215 @@ def api_search_by_text():
             "artist": artist_r,
             "album":  album_r,
             "score":  round(score / 100.0, 2),
+            "release_mbid": releases[0].get("id", "") if releases else "",
         })
 
     return jsonify({"candidates": candidates})
+
+
+_COMPILATION_RE = re.compile(
+    r'greatest\s+hits?|best\s+of|collect(?:ion|ed)|essential|anthology|'
+    r'the\s+very\s+best|platinum\s+(?:hits?|edition)|diamond|box\s+set|rarities|'
+    r'definitive\s+collection|ultimate\s+collection',
+    re.IGNORECASE,
+)
+
+
+@app.route("/api/search_artists", methods=["POST"])
+def api_search_artists():
+    """Given a song title, return a ranked list of artists that performed it."""
+    data  = request.get_json(force=True)
+    title = str(data.get("title", "")).strip()
+    if not title:
+        abort(400, "Provide a title")
+
+    url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
+        "query": f'recording:"{title}"',
+        "fmt":   "json",
+        "limit": "25",
+    })
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        abort(502, f"MusicBrainz error: {exc}")
+
+    artist_map: dict = {}
+    for recording in result.get("recordings", []):
+        score = int(recording.get("score", 0))
+        ac    = recording.get("artist-credit", [])
+        if not ac:
+            continue
+        name = ac[0].get("artist", {}).get("name", "") or ac[0].get("name", "")
+        mbid = ac[0].get("artist", {}).get("id", "")
+        if not name:
+            continue
+        key = name.lower()
+        if key not in artist_map:
+            artist_map[key] = {"name": name, "mbid": mbid, "score_max": score, "count": 1}
+        else:
+            artist_map[key]["count"] += 1
+            if score > artist_map[key]["score_max"]:
+                artist_map[key]["score_max"] = score
+
+    artists = sorted(artist_map.values(), key=lambda a: (-a["score_max"], -a["count"]))
+    return jsonify({"artists": [{"name": a["name"], "mbid": a["mbid"]} for a in artists[:12]]})
+
+
+@app.route("/api/search_albums", methods=["POST"])
+def api_search_albums():
+    """Given title + artist, return albums ranked with the original release first."""
+    data   = request.get_json(force=True)
+    title  = str(data.get("title",  "")).strip()
+    artist = str(data.get("artist", "")).strip()
+    if not title or not artist:
+        abort(400, "Provide title and artist")
+
+    url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode({
+        "query": f'recording:"{title}" AND artist:"{artist}"',
+        "fmt":   "json",
+        "limit": "25",
+    })
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        abort(502, f"MusicBrainz error: {exc}")
+
+    seen_ids: set     = set()
+    releases_raw: list = []
+    for recording in result.get("recordings", []):
+        rec_title  = recording.get("title", "")
+        ac         = recording.get("artist-credit", [])
+        rec_artist = (ac[0].get("artist", {}).get("name", "") or ac[0].get("name", "")) if ac else ""
+        for rel in recording.get("releases", []):
+            rel_id = rel.get("id", "")
+            if not rel_id or rel_id in seen_ids:
+                continue
+            seen_ids.add(rel_id)
+
+            rg              = rel.get("release-group", {})
+            primary_type    = rg.get("primary-type", "")
+            secondary_types = rg.get("secondary-types", [])
+            album_title     = rel.get("title", "")
+            date            = rel.get("date", "") or ""
+            year            = int(date[:4]) if len(date) >= 4 and date[:4].isdigit() else 9999
+
+            is_compilation = (
+                "Compilation" in secondary_types
+                or bool(_COMPILATION_RE.search(album_title))
+            )
+            if is_compilation:
+                orig_score = 20
+            elif primary_type != "Album":
+                orig_score = 10   # Singles, EPs, etc.
+            else:
+                orig_score = 0    # Pure studio album
+
+            releases_raw.append({
+                "title":        rec_title,
+                "artist":       rec_artist,
+                "album":        album_title,
+                "release_mbid": rel_id,
+                "year":         year,
+                "primary_type": primary_type,
+                "orig_score":   orig_score,
+            })
+
+    # Sort: original albums first, then by year ascending (oldest = most likely original)
+    releases_raw.sort(key=lambda r: (r["orig_score"], r["year"]))
+
+    seen_titles: set = set()
+    albums: list = []
+    for r in releases_raw:
+        key = r["album"].lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        albums.append({
+            "title":        r["title"],
+            "artist":       r["artist"],
+            "album":        r["album"],
+            "release_mbid": r["release_mbid"],
+            "year":         r["year"] if r["year"] != 9999 else None,
+            "primary_type": r["primary_type"],
+        })
+
+    return jsonify({"albums": albums[:15]})
+
+
+_MBID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+)
+
+# Simple in-memory cache for cover art lookups
+_cover_art_cache: dict = {}  # key -> url or None
+
+
+@app.route("/api/cover_art")
+def api_cover_art():
+    """Return a cover art URL for the given artist+album or MusicBrainz release MBID."""
+    mbid   = request.args.get("mbid",   "").strip()
+    artist = request.args.get("artist", "").strip()
+    album  = request.args.get("album",  "").strip()
+
+    # Validate MBID to prevent injection
+    if mbid and not _MBID_RE.match(mbid.lower()):
+        mbid = ""
+
+    cache_key = mbid or f"{artist.lower()}|{album.lower()}"
+    if not cache_key or cache_key == "|":
+        return jsonify({"url": None})
+
+    if cache_key in _cover_art_cache:
+        return jsonify({"url": _cover_art_cache[cache_key]})
+
+    # If we don't already have an MBID, search MusicBrainz releases
+    if not mbid:
+        parts = []
+        if artist:
+            parts.append(f'artist:"{artist}"')
+        if album:
+            parts.append(f'release:"{album}"')
+        if not parts:
+            _cover_art_cache[cache_key] = None
+            return jsonify({"url": None})
+
+        query = " AND ".join(parts)
+        url = "https://musicbrainz.org/ws/2/release/?" + urllib.parse.urlencode({
+            "query": query,
+            "fmt":   "json",
+            "limit": "5",
+        })
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            _cover_art_cache[cache_key] = None
+            return jsonify({"url": None})
+
+        for release in result.get("releases", []):
+            candidate_mbid = release.get("id", "")
+            if candidate_mbid and _MBID_RE.match(candidate_mbid):
+                mbid = candidate_mbid
+                break
+
+    if not mbid:
+        _cover_art_cache[cache_key] = None
+        return jsonify({"url": None})
+
+    cover_url = f"https://coverartarchive.org/release/{mbid}/front/250"
+    _cover_art_cache[cache_key] = cover_url
+    return jsonify({"url": cover_url, "mbid": mbid})
 
 
 # ─── Pre-fetch next card in background ────────────────────────────────────────

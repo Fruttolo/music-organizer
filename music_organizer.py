@@ -4,8 +4,11 @@
 import os
 import re
 import sys
+import json
 import shutil
 import argparse
+import urllib.request
+import urllib.parse
 from pathlib import Path
 
 try:
@@ -43,6 +46,11 @@ except ImportError:
 # ─── Configuration ─────────────────────────────────────────────────────────────
 
 ACOUSTID_API_KEY = os.environ.get("ACOUSTID_API_KEY", "")
+
+_MBID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE,
+)
 
 AUDIO_EXTENSIONS = {
     ".mp3", ".flac", ".m4a", ".ogg", ".wav",
@@ -112,9 +120,58 @@ def lookup_acoustid(duration: float, fingerprint: str, api_key: str) -> list:
                         "title": title,
                         "artist": artist,
                         "album": album,
+                        "release_mbid": release.get("id", ""),
                     }
 
     return sorted(candidates.values(), key=lambda x: x["score"], reverse=True)[:5]
+
+
+def fetch_cover_art_bytes(mbid: str = "", artist: str = "", album: str = ""):
+    """Download cover art from Cover Art Archive.
+    Returns (image_bytes, mime_type) or (None, None) on failure.
+    """
+    if mbid and not _MBID_RE.match(mbid):
+        mbid = ""
+
+    # If no MBID, look up a release MBID via MusicBrainz
+    if not mbid and (artist or album):
+        parts = []
+        if artist:
+            parts.append(f'artist:"{artist}"')
+        if album:
+            parts.append(f'release:"{album}"')
+        url = "https://musicbrainz.org/ws/2/release/?" + urllib.parse.urlencode({
+            "query": " AND ".join(parts),
+            "fmt":   "json",
+            "limit": "5",
+        })
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "MusicOrganizer/1.0 (music-organizer)",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            for release in result.get("releases", []):
+                candidate_mbid = release.get("id", "")
+                if candidate_mbid and _MBID_RE.match(candidate_mbid):
+                    mbid = candidate_mbid
+                    break
+        except Exception:
+            return None, None
+
+    if not mbid:
+        return None, None
+
+    req = urllib.request.Request(
+        f"https://coverartarchive.org/release/{mbid}/front/500",
+        headers={"User-Agent": "MusicOrganizer/1.0 (music-organizer)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+            return resp.read(), mime
+    except Exception:
+        return None, None
 
 
 # ─── Metadata helpers ─────────────────────────────────────────────────────────
@@ -152,6 +209,58 @@ def write_tags(file_path: Path, title: str, artist: str, album: str) -> None:
         audio.save()
     except Exception as exc:
         console.print(f"  [yellow]Warning: could not write tags:[/yellow] {exc}")
+
+
+def write_cover_art(file_path: Path, image_data: bytes, mime_type: str = "image/jpeg") -> None:
+    """Embed cover art into the audio file using the format-specific mutagen API."""
+    ext = file_path.suffix.lower()
+    try:
+        if ext == ".mp3":
+            from mutagen.id3 import ID3, APIC
+            from mutagen.id3 import error as ID3Error
+            try:
+                tags = ID3(str(file_path))
+            except ID3Error:
+                tags = ID3()
+            tags.delall("APIC")
+            tags.add(APIC(encoding=3, mime=mime_type, type=3, desc="Cover", data=image_data))
+            tags.save(str(file_path))
+        elif ext == ".flac":
+            from mutagen.flac import FLAC, Picture
+            audio = FLAC(str(file_path))
+            pic = Picture()
+            pic.data = image_data
+            pic.type = 3
+            pic.mime = mime_type
+            pic.width = pic.height = pic.depth = 0
+            audio.clear_pictures()
+            audio.add_picture(pic)
+            audio.save()
+        elif ext in (".m4a", ".mp4", ".aac"):
+            from mutagen.mp4 import MP4, MP4Cover
+            audio = MP4(str(file_path))
+            fmt = MP4Cover.FORMAT_JPEG if mime_type in ("image/jpeg", "image/jpg") else MP4Cover.FORMAT_PNG
+            audio["covr"] = [MP4Cover(image_data, imageformat=fmt)]
+            audio.save()
+        elif ext in (".ogg", ".opus"):
+            import base64 as _base64
+            from mutagen.flac import Picture
+            pic = Picture()
+            pic.data = image_data
+            pic.type = 3
+            pic.mime = mime_type
+            pic.width = pic.height = pic.depth = 0
+            encoded = _base64.b64encode(pic.write()).decode("ascii")
+            if ext == ".opus":
+                from mutagen.oggopus import OggOpus
+                audio = OggOpus(str(file_path))
+            else:
+                from mutagen.oggvorbis import OggVorbis
+                audio = OggVorbis(str(file_path))
+            audio["metadata_block_picture"] = [encoded]
+            audio.save()
+    except Exception as exc:
+        console.print(f"  [yellow]Warning: could not write cover art:[/yellow] {exc}")
 
 
 # ─── File-system helpers ───────────────────────────────────────────────────────
@@ -304,6 +413,20 @@ def process_file(
         copy=copy,
     )
     write_tags(dest, selected.get("title", ""), selected.get("artist", ""), selected.get("album", ""))
+
+    # Fetch and embed cover art
+    release_mbid = selected.get("release_mbid", "")
+    if release_mbid or (selected.get("artist") and selected.get("album")):
+        with console.status("Fetching cover art…", spinner="dots"):
+            img_data, img_mime = fetch_cover_art_bytes(
+                mbid=release_mbid,
+                artist=selected.get("artist", ""),
+                album=selected.get("album", ""),
+            )
+        if img_data:
+            write_cover_art(dest, img_data, img_mime or "image/jpeg")
+            console.print("  [green]✓ Cover art embedded[/green]")
+
     verb = "Copied" if copy else "Moved"
     console.print(f"  [green]✓ {verb}:[/green] {dest}")
     return True
