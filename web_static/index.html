@@ -1222,7 +1222,7 @@ function buildCard(data) {
   // Proposed column (with copy buttons)
   const colProp = document.createElement('div');
   colProp.className = 'tags-col tags-col-prop';
-  colProp.innerHTML = `<div class="col-header">Proposti <button class="btn-manual-search" title="Ricerca manuale tag">🔍</button></div>`;
+  colProp.innerHTML = `<div class="col-header">Proposti <button class="btn-manual-search btn-reload-proposed" title="Ripristina suggerimento automatico" style="display:none">🔄</button><button class="btn-manual-search btn-open-search" title="Ricerca manuale tag">🔍</button></div>`;
 
   for (const [k, v] of [['Title', propTitle], ['Artist', propArtist], ['Album', propAlbum]]) {
     const row = document.createElement('div');
@@ -1238,9 +1238,27 @@ function buildCard(data) {
   compare.appendChild(colProp);
 
   // wire manual search button
-  colProp.querySelector('.btn-manual-search').addEventListener('click', (e) => {
+  colProp.querySelector('.btn-open-search').addEventListener('click', (e) => {
     e.stopPropagation();
     openSearchModal();
+  });
+
+  // wire reload proposed button
+  const btnReload = colProp.querySelector('.btn-reload-proposed');
+  btnReload.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const cands  = currentCard && currentCard.candidates;
+    const offset = (currentCard && currentCard.candidate_offset) || 0;
+    let origBest;
+    if (cands && cands.length) {
+      origBest = cands[offset % cands.length];
+    } else if (currentCard && currentCard.existing && Object.values(currentCard.existing).some(Boolean)) {
+      origBest = currentCard.existing;
+    } else {
+      origBest = {};
+    }
+    btnReload.style.display = 'none';
+    applySearchResult(origBest);
   });
 
   // wire copy-originals-to-proposed button
@@ -1252,6 +1270,7 @@ function buildCard(data) {
       album:        ex.album  || '',
       release_mbid: ''
     });
+    btnReload.style.display = '';
   });
 
   card.appendChild(compare);
