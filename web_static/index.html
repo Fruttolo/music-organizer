@@ -63,6 +63,7 @@
     white-space: nowrap;
   }
   .stat-chip .val { color: var(--text); font-weight: 600; }
+  #stat-skipped-btn:hover { border-color: var(--skip); color: var(--skip); }
 
   /* ── Progress bar ─────────────────────────────────────────────────── */
   .progress-wrap {
@@ -130,6 +131,7 @@
     pointer-events: none;
     transition: opacity .1s;
     letter-spacing: 1px;
+    z-index: 10;
   }
   .card .lbl-accept { left: 20px;  color: var(--accept); border-color: var(--accept); transform: rotate(-15deg); }
   .card .lbl-skip   { right: 20px; color: var(--skip);   border-color: var(--skip);   transform: rotate(15deg); }
@@ -655,7 +657,7 @@
   <h1>🎵 Music Organizer</h1>
   <div class="stats">
     <span class="stat-chip">✅ <span class="val" id="s-accepted">–</span></span>
-    <span class="stat-chip">⏩ <span class="val" id="s-skipped">–</span></span>
+    <span class="stat-chip" id="stat-skipped-btn" title="Rimetti in coda gli skippati" style="cursor:pointer">⏩ <span class="val" id="s-skipped">–</span></span>
     <span class="stat-chip">⏳ <span class="val" id="s-pending">–</span></span>
     <span class="stat-chip">⭐ <span class="val" id="s-playlist">–</span></span>
   </div>
@@ -676,9 +678,8 @@
 <!-- ── Action buttons ──────────────────────────────────────────────────── -->
 <div class="actions" id="actions" style="visibility:hidden">
   <button class="btn-action btn-skip"   id="btn-skip"   title="Skip (←)">✕</button>
-  <button class="btn-action btn-reset"  id="btn-reset-skipped" title="Re-queue all skipped">↺ skipped</button>
-  <button class="btn-action btn-accept" id="btn-accept" title="Accept (→)">✓</button>
   <button class="btn-action btn-star"   id="btn-star"   title="Add to playlist (↑)">⭐</button>
+  <button class="btn-action btn-accept" id="btn-accept" title="Accept (→)">✓</button>
 </div>
 
 
@@ -935,7 +936,6 @@ async function loadNext() {
           <p>Every track has been reviewed. You can reset skipped songs to review them again.</p>
         </div>`;
       setActionsVisible(false);
-      document.getElementById('btn-reset-skipped').style.display = 'flex';
       refreshStats();
       return;
     }
@@ -1138,7 +1138,10 @@ function spaceToggle() {
 
 // ── Reset skipped ──────────────────────────────────────────────────────────
 
-document.getElementById('btn-reset-skipped').addEventListener('click', async () => {
+document.getElementById('stat-skipped-btn').addEventListener('click', async () => {
+  const skipped = parseInt(document.getElementById('s-skipped').textContent, 10);
+  if (!skipped) return;
+  if (!confirm(`Rimettere in coda ${skipped} brano/i skippato/i?`)) return;
   await api('/api/reset_skipped', { method: 'POST', body: '{}' });
   loadNext();
 });
